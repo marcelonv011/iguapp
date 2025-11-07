@@ -1,6 +1,6 @@
 // src/pages/Home.jsx
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl, asARS } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fetchFeaturedPublications, fetchFeaturedRestaurants } from "@/api/firestoreFetchers";
@@ -37,7 +37,8 @@ export default function Home() {
     { name: "Delivery",         icon: UtensilsCrossed, description: "Pedí comida a domicilio",     color: "from-red-500 to-red-600",         href: createPageUrl("Delivery") },
   ];
 
-  const goToLogin = () => { window.location.href = "/login"; };
+  const navigate = useNavigate();
+  const goToLogin = () => navigate("/login");
 
   return (
     <div className="min-h-screen">
