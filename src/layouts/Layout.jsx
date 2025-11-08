@@ -1,5 +1,6 @@
+// src/layouts/Layout.jsx
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
   Home, Briefcase, Building2, ShoppingBag, Store,
@@ -21,10 +22,13 @@ import { Badge } from "@/ui/badge";
 
 export default function Layout({ children }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuthUser();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profile, setProfile] = useState(null);
 
+  // === Cargar perfil desde Firestore ===
   useEffect(() => {
     const load = async () => {
       try {
@@ -39,10 +43,21 @@ export default function Layout({ children }) {
     load();
   }, [user]);
 
-  const handleLogout = async () => { await signOut(auth); };
+  // === Logout ===
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setProfile(null);
+      navigate("/"); // redirige al home
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      alert("Hubo un problema al cerrar sesión");
+    }
+  };
 
+  // === Navegación principal ===
   const mainNavigation = [
-    { name: "Inicio", href: createPageUrl("Home"), icon: Home },
+    { name: "Inicio", href: "/", icon: Home },
     { name: "Empleos", href: createPageUrl("Empleos"), icon: Briefcase },
     { name: "Alquileres", href: createPageUrl("Alquileres"), icon: Building2 },
     { name: "Ventas", href: createPageUrl("Ventas"), icon: ShoppingBag },
@@ -50,12 +65,31 @@ export default function Layout({ children }) {
     { name: "Delivery", href: createPageUrl("Delivery"), icon: UtensilsCrossed },
   ];
 
+  // === Badges de rol ===
   const RolePill = () => {
     const role = profile?.role_type;
     if (!role) return null;
-    if (role === "superadmin") return <Badge tone="purple"><Shield className="w-3 h-3" />SuperAdmin</Badge>;
-    if (role === "admin") return <Badge tone="amber"><Crown className="w-3 h-3" />Admin</Badge>;
+    if (role === "superadmin")
+      return (
+        <Badge className="gap-1 bg-purple-100 text-purple-700 border border-purple-200">
+          <Shield className="w-3 h-3" /> SuperAdmin
+        </Badge>
+      );
+    if (role === "admin")
+      return (
+        <Badge className="gap-1 bg-amber-100 text-amber-700 border border-amber-200">
+          <Crown className="w-3 h-3" /> Admin
+        </Badge>
+      );
     return null;
+  };
+
+  // === Texto de descripción de rol ===
+  const RoleText = () => {
+    const role = profile?.role_type;
+    if (role === "superadmin") return <p className="text-xs text-purple-600 mt-1">Super Administrador del sistema</p>;
+    if (role === "admin") return <p className="text-xs text-amber-600 mt-1">Administrador local</p>;
+    return <p className="text-xs text-slate-500 mt-1"></p>;
   };
 
   return (
@@ -65,7 +99,7 @@ export default function Layout({ children }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to={createPageUrl("Home")} className="flex items-center gap-3 group">
+            <Link to="/" className="flex items-center gap-3 group">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20 group-hover:scale-105 transition-transform">
                 <Store className="w-6 h-6 text-white" />
               </div>
@@ -83,15 +117,17 @@ export default function Layout({ children }) {
             <nav className="hidden lg:flex items-center gap-1">
               {mainNavigation.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.href;
+                // 👇 Inicio exacto, otros con startsWith
+                const isActive =
+                  item.name === "Inicio"
+                    ? location.pathname === "/" || location.pathname === "/home"
+                    : location.pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.name}
                     to={item.href}
                     className={`flex items-center gap-2 px-4 py-2 rounded-2xl transition-all ${
-                      isActive
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-700 hover:bg-slate-100"
+                      isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -101,70 +137,93 @@ export default function Layout({ children }) {
               })}
             </nav>
 
-            {/* Right */}
+            {/* Right (perfil o login) */}
             <div className="flex items-center gap-3">
               {user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <div className="flex items-center gap-2 cursor-pointer">
-                      <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center shadow-md">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="hidden sm:block text-left">
-                        <div className="text-sm font-semibold leading-none">
-                          {profile?.full_name || "Usuario"}
-                        </div>
-                        <div className="mt-1"><RolePill /></div>
-                      </div>
-                    </div>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <div className="px-3 py-2 text-sm">
-                      <p className="font-medium">{profile?.email || user.email}</p>
-                      <div className="mt-2"><RolePill /></div>
-                    </div>
-                    <DropdownMenuSeparator />
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      {/* 👇 botón focusable (antes era un <div>) */}
+      <button type="button" className="flex items-center gap-2 cursor-pointer outline-none">
+        <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center shadow-md">
+          <User className="w-4 h-4 text-white" />
+        </div>
+        <div className="hidden sm:block text-left">
+         <div className="text-sm font-semibold leading-none">
+  {profile?.full_name
+    ? profile.full_name
+    : user?.displayName
+      ? user.displayName
+      : profile?.email || "Usuario"}
+</div>
 
-                    {(profile?.role_type === "admin" || profile?.role_type === "superadmin") && (
-                      <>
-                        <DropdownMenuItem asChild>
-                          <Link to={createPageUrl("AdminPanel")}>
-                            <Settings className="w-4 h-4" /> Panel de Admin
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link to={createPageUrl("GestionarRestaurante")}>
-                            <ChefHat className="w-4 h-4" /> Mi Restaurante
-                          </Link>
-                        </DropdownMenuItem>
-                      </>
-                    )}
+          <div className="mt-1">
+            <RolePill />
+            <RoleText />
+          </div>
+        </div>
+      </button>
+    </DropdownMenuTrigger>
 
-                    {profile?.role_type === "superadmin" && (
-                      <DropdownMenuItem asChild>
-                        <Link to={createPageUrl("SuperAdminPanel")}>
-                          <Shield className="w-4 h-4" /> Panel SuperAdmin
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
+    <DropdownMenuContent align="end" className="w-56">
+      <div className="px-3 py-2 text-sm">
+        <p className="font-medium">{profile?.email || user.email}</p>
+        <div className="mt-2">
+          <RolePill />
+          <RoleText />
+        </div>
+      </div>
 
-                    <DropdownMenuItem asChild>
-                      <Link to={createPageUrl("MisPedidos")}>
-                        <Package className="w-4 h-4" /> Mis Pedidos
-                      </Link>
-                    </DropdownMenuItem>
+      <DropdownMenuSeparator />
 
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="text-red-600">
-                      <LogOut className="w-4 h-4" /> Cerrar Sesión
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Link to="/login">
-                  <Button variant="primary" size="md">Iniciar Sesión</Button>
-                </Link>
-              )}
+      {(profile?.role_type === "admin" || profile?.role_type === "superadmin") && (
+        <>
+          <DropdownMenuItem asChild>
+            <Link to={createPageUrl("AdminPanel")}>
+              <Settings className="w-4 h-4" /> <span className="ml-2">Panel de Admin</span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to={createPageUrl("GestionarRestaurante")}>
+              <ChefHat className="w-4 h-4" /> <span className="ml-2">Mi Restaurante</span>
+            </Link>
+          </DropdownMenuItem>
+        </>
+      )}
+
+      {profile?.role_type === "superadmin" && (
+        <DropdownMenuItem asChild>
+          <Link to={createPageUrl("SuperAdminPanel")}>
+            <Shield className="w-4 h-4" /> <span className="ml-2">Panel SuperAdmin</span>
+          </Link>
+        </DropdownMenuItem>
+      )}
+
+      <DropdownMenuItem asChild>
+        <Link to={createPageUrl("MisPedidos")}>
+          <Package className="w-4 h-4" /> <span className="ml-2">Mis Pedidos</span>
+        </Link>
+      </DropdownMenuItem>
+
+      <DropdownMenuSeparator />
+
+      {/* 👇 En Radix use onSelect en vez de onClick */}
+      <DropdownMenuItem
+        onSelect={(e) => {
+          e.preventDefault();
+          handleLogout();
+        }}
+        className="text-red-600"
+      >
+        <LogOut className="w-4 h-4" /> <span className="ml-2">Cerrar Sesión</span>
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+) : (
+  <Link to="/login">
+    <Button variant="primary" size="md">Iniciar Sesión</Button>
+  </Link>
+)}
+
 
               {/* Mobile toggle */}
               <Button
@@ -186,7 +245,10 @@ export default function Layout({ children }) {
             <nav className="px-4 py-3 space-y-1">
               {mainNavigation.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.href;
+                const isActive =
+                  item.name === "Inicio"
+                    ? location.pathname === "/" || location.pathname === "/home"
+                    : location.pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.name}
