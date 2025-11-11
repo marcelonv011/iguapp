@@ -26,6 +26,9 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { toast } from "sonner";
 
 /* =================== Helpers =================== */
+const toDate = (v) => (v?.toDate ? v.toDate() : v ? new Date(v) : null);
+const isSameMonthYear = (d, m, y) => d && d.getMonth?.() === m && d.getFullYear?.() === y;
+
 const fmtDate = (v) => {
   if (!v) return "—";
   const d = v?.toDate ? v.toDate() : new Date(v);
@@ -83,6 +86,11 @@ export default function SuperAdminPanel() {
   // filtros
   const [pubQuery, setPubQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
+
+  // filtro ingresos (mes/año)
+  const today = useMemo(() => new Date(), []);
+  const [selMonth, setSelMonth] = useState(today.getMonth());   // 0-11
+  const [selYear, setSelYear] = useState(today.getFullYear());
 
   // edición publicación
   const [editOpen, setEditOpen] = useState(false);
@@ -166,6 +174,13 @@ export default function SuperAdminPanel() {
     loadAll();
   };
 
+  // --- Acciones suscripciones ---
+  const setSubscriptionStatus = async (id, status) => {
+    await updateDoc(doc(db, "subscriptions", id), { status });
+    toast.success(status === "active" ? "Suscripción activada" : "Suscripción inactivada");
+    loadAll();
+  };
+
   // --- Acciones usuarios ---
   const setRole = async (id, role_type) => {
     await updateDoc(doc(db, "users", id), { role_type });
@@ -174,26 +189,36 @@ export default function SuperAdminPanel() {
   };
 
   // --- Derivados (KPIs + filtros) ---
-  const now = new Date();
-  const isSameMonth = (d) =>
-    d && d.getMonth?.() === now.getMonth() && d.getFullYear?.() === now.getFullYear();
-
   const kpis = useMemo(() => {
     const totalUsers = users.length;
     const activeSubs = subscriptions.filter((s) => s.status === "active");
-    const revenueMonth = activeSubs.reduce((acc, s) => {
-      const sd = s.start_date?.toDate ? s.start_date.toDate() : (s.start_date ? new Date(s.start_date) : null);
-      return isSameMonth(sd) ? acc + (Number(s.amount) || 0) : acc;
+
+    // ingresos del mes seleccionado (por start_date)
+    const revenueSelected = activeSubs.reduce((acc, s) => {
+      const sd = toDate(s.start_date);
+      return isSameMonthYear(sd, selMonth, selYear) ? acc + (Number(s.amount) || 0) : acc;
     }, 0);
+
     const pendingPubs = publications.filter((p) => p.status === "pending").length;
 
     return {
       totalUsers,
       activeSubscriptions: activeSubs.length,
       pendingPublications: pendingPubs,
-      revenueMonth,
+      revenueMonth: revenueSelected,
     };
-  }, [users, subscriptions, publications]);
+  }, [users, subscriptions, publications, selMonth, selYear]);
+
+  // años disponibles en subs (para selector)
+  const yearOptions = useMemo(() => {
+    const set = new Set(
+      subscriptions
+        .map(s => toDate(s.start_date)?.getFullYear())
+        .filter(Boolean)
+        .concat([today.getFullYear()])
+    );
+    return Array.from(set).sort((a,b)=>a-b);
+  }, [subscriptions, today]);
 
   const filteredPublications = useMemo(() => {
     const q = pubQuery.toLowerCase().trim();
@@ -249,6 +274,32 @@ export default function SuperAdminPanel() {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
+
+        {/* Filtro Mes/Año para ingresos */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="text-sm text-slate-600">Filtrar ingresos por:</div>
+          <select
+            className="border rounded-md px-3 py-2 bg-white"
+            value={selMonth}
+            onChange={(e) => setSelMonth(Number(e.target.value))}
+          >
+            {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+              .map((m,i)=>(<option key={i} value={i}>{m}</option>))}
+          </select>
+          <select
+            className="border rounded-md px-3 py-2 bg-white"
+            value={selYear}
+            onChange={(e) => setSelYear(Number(e.target.value))}
+          >
+            {yearOptions.map(y => (<option key={y} value={y}>{y}</option>))}
+          </select>
+          <div className="text-sm text-slate-500">
+            Total: <span className="font-semibold text-emerald-700">
+              ${Number(kpis.revenueMonth || 0).toLocaleString()}
+            </span>
+          </div>
+        </div>
+
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <KPI title="Usuarios" value={kpis.totalUsers} icon={<Users className="w-5 h-5 text-blue-600" />} />
@@ -452,16 +503,33 @@ export default function SuperAdminPanel() {
                             <TableHead>Inicio</TableHead>
                             <TableHead>Vencimiento</TableHead>
                             <TableHead>Estado</TableHead>
+                            <TableHead className="w-40">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {subscriptions.map((s) => (
                             <TableRow key={s.id} className="hover:bg-slate-50/60">
                               <TableCell>{s.user_email || "—"}</TableCell>
-                              <TableCell className="font-medium">{fmtMoneyShort(s.amount)}</TableCell>
+                              <TableCell className="font-medium">
+                                ${Number(s.amount || 0).toLocaleString()}
+                              </TableCell>
                               <TableCell className="text-sm">{fmtDate(s.start_date)}</TableCell>
                               <TableCell className="text-sm">{fmtDate(s.end_date)}</TableCell>
                               <TableCell><StatusBadge status={s.status} /></TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {s.status !== "active" && (
+                                    <Button size="sm" variant="outline" onClick={() => setSubscriptionStatus(s.id, "active")}>
+                                      Activar
+                                    </Button>
+                                  )}
+                                  {s.status === "active" && (
+                                    <Button size="sm" variant="outline" onClick={() => setSubscriptionStatus(s.id, "inactive")}>
+                                      Inactivar
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
