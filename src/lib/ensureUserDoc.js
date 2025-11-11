@@ -3,36 +3,39 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase";
 
 /**
- * Crea /users/{uid} si no existe. Si existe, completa campos faltantes
- * sin pisar rol ni datos ya cargados por el admin.
+ * Crea o actualiza el documento del usuario en Firestore:
+ * - Si no existe, lo crea con los datos básicos.
+ * - Si existe, completa solo los campos vacíos (sin pisar rol o datos ya cargados).
+ * - Actualiza la fecha del último login.
  */
-export async function ensureUserDoc(firebaseUser) {
-  if (!firebaseUser) return;
+export async function ensureUserDoc(user, extra = {}) {
+  if (!user?.uid) return;
 
-  const { uid, email, displayName, phoneNumber, photoURL } = firebaseUser;
-  const ref = doc(db, "users", uid);
+  const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
 
+  // Datos base provenientes de Firebase Auth + extras opcionales
   const base = {
-    email: email ?? null,
-    full_name: displayName ?? "",
-    phone_number: phoneNumber ?? "", // se guarda si el provider lo trae
-    photo_url: photoURL ?? "",
+    email: user.email || null,
+    full_name: extra.full_name || user.displayName || "",
+    phone_number: extra.phone_number || user.phoneNumber || "",
+    photo_url: user.photoURL || "",
     role_type: "usuario",
   };
 
   if (!snap.exists()) {
+    // 🆕 Crear usuario nuevo en Firestore
     await setDoc(ref, {
       ...base,
       created_at: serverTimestamp(),
       last_login_at: serverTimestamp(),
     });
   } else {
+    // 🔄 Si ya existe, completar campos faltantes sin sobrescribir
     const existing = snap.data() || {};
     await setDoc(
       ref,
       {
-        // Solo completa lo que falte, no pisa lo que ya cargaste
         email: existing.email || base.email,
         full_name: existing.full_name || base.full_name,
         phone_number: existing.phone_number || base.phone_number,

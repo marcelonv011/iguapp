@@ -9,11 +9,11 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import Layout from "@/layouts/Layout.jsx";
 import Home from "@/pages/Home.jsx";
 import Login from "@/pages/Login.jsx";
+import Registro from "@/pages/Registro.jsx"; // 👈 nuevo import
 import AdminPanel from "@/pages/AdminPanel.jsx";
 import SuperAdminPanel from "@/pages/SuperAdminPanel.jsx";
-import SettingsProfile from "@/pages/SettingsProfile";
+import SettingsProfile from "@/pages/SettingsProfile.jsx";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-
 
 import "./index.css";
 
@@ -26,7 +26,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <BrowserRouter>
           <Layout>
             <Routes>
-              {/* públicas */}
+              {/* 🌐 Públicas */}
               <Route path="/" element={<Home />} />
               <Route path="/empleos" element={<div>Empleos</div>} />
               <Route path="/alquileres" element={<div>Alquileres</div>} />
@@ -35,9 +35,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/delivery" element={<div>Delivery</div>} />
               <Route path="/restaurant" element={<div>Restaurant</div>} />
               <Route path="/login" element={<Login />} />
+              <Route path="/registro" element={<Registro />} /> {/* ✅ nueva ruta */}
               <Route path="/configuracion" element={<SettingsProfile />} />
 
-              {/* protegidas */}
+              {/* 🔒 Protegidas */}
               <Route
                 path="/admin"
                 element={
