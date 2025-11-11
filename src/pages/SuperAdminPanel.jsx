@@ -2,32 +2,59 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  collection, getDocs, doc, getDoc, updateDoc, deleteDoc,
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
 import {
-  Shield, Users, FileText, Calendar, Eye, DollarSign,
-  CheckCircle, XCircle, Search, Home as HomeIcon, Pencil, Trash2,
+  Shield,
+  Users,
+  FileText,
+  Calendar,
+  Eye,
+  DollarSign,
+  CheckCircle,
+  XCircle,
+  Search,
+  Home as HomeIcon,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/ui/dialog";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Input } from "@/ui/input";
 import { Textarea } from "@/ui/textarea";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/ui/select";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/ui/select";
 import { toast } from "sonner";
 
 /* =================== Helpers =================== */
 const toDate = (v) => (v?.toDate ? v.toDate() : v ? new Date(v) : null);
-const isSameMonthYear = (d, m, y) => d && d.getMonth?.() === m && d.getFullYear?.() === y;
+const isSameMonthYear = (d, m, y) =>
+  d && d.getMonth?.() === m && d.getFullYear?.() === y;
 
 const fmtDate = (v) => {
   if (!v) return "—";
@@ -89,20 +116,27 @@ export default function SuperAdminPanel() {
 
   // filtro ingresos (mes/año)
   const today = useMemo(() => new Date(), []);
-  const [selMonth, setSelMonth] = useState(today.getMonth());   // 0-11
+  const [selMonth, setSelMonth] = useState(today.getMonth()); // 0-11
   const [selYear, setSelYear] = useState(today.getFullYear());
 
   // edición publicación
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({
-    title: "", description: "", category: "empleo", price: "", status: "pending",
+    title: "",
+    description: "",
+    category: "empleo",
+    price: "",
+    status: "pending",
   });
 
   // --- Validar SuperAdmin ---
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) { navigate("/login"); return; }
+      if (!u) {
+        navigate("/login");
+        return;
+      }
       const ref = doc(db, "users", u.uid);
       const snap = await getDoc(ref);
       const current = snap.exists() ? snap.data() : null;
@@ -134,7 +168,9 @@ export default function SuperAdminPanel() {
   // --- Acciones publicaciones ---
   const updatePublicationStatus = async (id, status) => {
     await updateDoc(doc(db, "publications", id), { status });
-    toast.success(status === "active" ? "Publicación aprobada" : "Publicación rechazada");
+    toast.success(
+      status === "active" ? "Publicación aprobada" : "Publicación rechazada"
+    );
     loadAll();
   };
 
@@ -177,7 +213,9 @@ export default function SuperAdminPanel() {
   // --- Acciones suscripciones ---
   const setSubscriptionStatus = async (id, status) => {
     await updateDoc(doc(db, "subscriptions", id), { status });
-    toast.success(status === "active" ? "Suscripción activada" : "Suscripción inactivada");
+    toast.success(
+      status === "active" ? "Suscripción activada" : "Suscripción inactivada"
+    );
     loadAll();
   };
 
@@ -196,10 +234,14 @@ export default function SuperAdminPanel() {
     // ingresos del mes seleccionado (por start_date)
     const revenueSelected = activeSubs.reduce((acc, s) => {
       const sd = toDate(s.start_date);
-      return isSameMonthYear(sd, selMonth, selYear) ? acc + (Number(s.amount) || 0) : acc;
+      return isSameMonthYear(sd, selMonth, selYear)
+        ? acc + (Number(s.amount) || 0)
+        : acc;
     }, 0);
 
-    const pendingPubs = publications.filter((p) => p.status === "pending").length;
+    const pendingPubs = publications.filter(
+      (p) => p.status === "pending"
+    ).length;
 
     return {
       totalUsers,
@@ -213,31 +255,33 @@ export default function SuperAdminPanel() {
   const yearOptions = useMemo(() => {
     const set = new Set(
       subscriptions
-        .map(s => toDate(s.start_date)?.getFullYear())
+        .map((s) => toDate(s.start_date)?.getFullYear())
         .filter(Boolean)
         .concat([today.getFullYear()])
     );
-    return Array.from(set).sort((a,b)=>a-b);
+    return Array.from(set).sort((a, b) => a - b);
   }, [subscriptions, today]);
 
   const filteredPublications = useMemo(() => {
     const q = pubQuery.toLowerCase().trim();
     if (!q) return publications;
-    return publications.filter(p =>
-      (p.title || "").toLowerCase().includes(q) ||
-      (p.category || "").toLowerCase().includes(q) ||
-      (p.user_email || p.created_by || "").toLowerCase().includes(q) ||
-      (p.status || "").toLowerCase().includes(q)
+    return publications.filter(
+      (p) =>
+        (p.title || "").toLowerCase().includes(q) ||
+        (p.category || "").toLowerCase().includes(q) ||
+        (p.user_email || p.created_by || "").toLowerCase().includes(q) ||
+        (p.status || "").toLowerCase().includes(q)
     );
   }, [publications, pubQuery]);
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.toLowerCase().trim();
     if (!q) return users;
-    return users.filter(u =>
-      (u.full_name || "").toLowerCase().includes(q) ||
-      (u.email || "").toLowerCase().includes(q) ||
-      (u.role_type || "usuario").toLowerCase().includes(q)
+    return users.filter(
+      (u) =>
+        (u.full_name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
+        (u.role_type || "usuario").toLowerCase().includes(q)
     );
   }, [users, userQuery]);
 
@@ -265,8 +309,12 @@ export default function SuperAdminPanel() {
                 <span>›</span>
                 <span className="text-white">SuperAdmin</span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold">Panel SuperAdmin</h1>
-              <p className="text-white/80 text-sm">Gestión completa de la plataforma</p>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                Panel SuperAdmin
+              </h1>
+              <p className="text-white/80 text-sm">
+                Gestión completa de la plataforma
+              </p>
             </div>
           </div>
         </div>
@@ -274,7 +322,6 @@ export default function SuperAdminPanel() {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
-
         {/* Filtro Mes/Año para ingresos */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="text-sm text-slate-600">Filtrar ingresos por:</div>
@@ -283,18 +330,39 @@ export default function SuperAdminPanel() {
             value={selMonth}
             onChange={(e) => setSelMonth(Number(e.target.value))}
           >
-            {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
-              .map((m,i)=>(<option key={i} value={i}>{m}</option>))}
+            {[
+              "Enero",
+              "Febrero",
+              "Marzo",
+              "Abril",
+              "Mayo",
+              "Junio",
+              "Julio",
+              "Agosto",
+              "Septiembre",
+              "Octubre",
+              "Noviembre",
+              "Diciembre",
+            ].map((m, i) => (
+              <option key={i} value={i}>
+                {m}
+              </option>
+            ))}
           </select>
           <select
             className="border rounded-md px-3 py-2 bg-white"
             value={selYear}
             onChange={(e) => setSelYear(Number(e.target.value))}
           >
-            {yearOptions.map(y => (<option key={y} value={y}>{y}</option>))}
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
           </select>
           <div className="text-sm text-slate-500">
-            Total: <span className="font-semibold text-emerald-700">
+            Total:{" "}
+            <span className="font-semibold text-emerald-700">
               ${Number(kpis.revenueMonth || 0).toLocaleString()}
             </span>
           </div>
@@ -302,10 +370,27 @@ export default function SuperAdminPanel() {
 
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <KPI title="Usuarios" value={kpis.totalUsers} icon={<Users className="w-5 h-5 text-blue-600" />} />
-          <KPI title="Suscripciones activas" value={kpis.activeSubscriptions} icon={<Calendar className="w-5 h-5 text-emerald-600" />} />
-          <KPI title="Pendientes" value={kpis.pendingPublications} icon={<FileText className="w-5 h-5 text-amber-600" />} />
-          <KPI title="Ingresos (mes)" value={fmtMoneyShort(kpis.revenueMonth)} icon={<DollarSign className="w-5 h-5 text-green-600" />} accent="text-green-700" />
+          <KPI
+            title="Usuarios"
+            value={kpis.totalUsers}
+            icon={<Users className="w-5 h-5 text-blue-600" />}
+          />
+          <KPI
+            title="Suscripciones activas"
+            value={kpis.activeSubscriptions}
+            icon={<Calendar className="w-5 h-5 text-emerald-600" />}
+          />
+          <KPI
+            title="Pendientes"
+            value={kpis.pendingPublications}
+            icon={<FileText className="w-5 h-5 text-amber-600" />}
+          />
+          <KPI
+            title="Ingresos (mes)"
+            value={fmtMoneyShort(kpis.revenueMonth)}
+            icon={<DollarSign className="w-5 h-5 text-green-600" />}
+            accent="text-green-700"
+          />
         </div>
 
         {/* Tabs */}
@@ -313,15 +398,21 @@ export default function SuperAdminPanel() {
           <TabsList className="grid w-full grid-cols-3 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
             <TabsTrigger value="publications">
               Publicaciones
-              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">{publications.length}</span>
+              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
+                {publications.length}
+              </span>
             </TabsTrigger>
             <TabsTrigger value="users">
               Usuarios
-              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">{users.length}</span>
+              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
+                {users.length}
+              </span>
             </TabsTrigger>
             <TabsTrigger value="subscriptions">
               Suscripciones
-              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">{subscriptions.length}</span>
+              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
+                {subscriptions.length}
+              </span>
             </TabsTrigger>
           </TabsList>
 
@@ -363,35 +454,76 @@ export default function SuperAdminPanel() {
                         </TableHeader>
                         <TableBody>
                           {filteredPublications.map((p) => (
-                            <TableRow key={p.id} className="hover:bg-slate-50/60">
-                              <TableCell className="font-medium">{p.title}</TableCell>
+                            <TableRow
+                              key={p.id}
+                              className="hover:bg-slate-50/60"
+                            >
+                              <TableCell className="font-medium">
+                                {p.title}
+                              </TableCell>
                               <TableCell>
                                 <Badge className="bg-slate-100 text-slate-700 border border-slate-200">
                                   {p.category || "—"}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-sm">{p.user_email || p.created_by || "—"}</TableCell>
-                              <TableCell><StatusBadge status={p.status} /></TableCell>
+                              <TableCell className="text-sm">
+                                {p.user_email || p.created_by || "—"}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={p.status} />
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   {p.status === "pending" && (
                                     <>
-                                      <Button size="sm" variant="outline" onClick={() => updatePublicationStatus(p.id, "active")}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          updatePublicationStatus(
+                                            p.id,
+                                            "active"
+                                          )
+                                        }
+                                      >
                                         <CheckCircle className="w-4 h-4 text-emerald-600" />
                                       </Button>
-                                      <Button size="sm" variant="outline" onClick={() => updatePublicationStatus(p.id, "inactive")}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          updatePublicationStatus(
+                                            p.id,
+                                            "inactive"
+                                          )
+                                        }
+                                      >
                                         <XCircle className="w-4 h-4 text-rose-600" />
                                       </Button>
                                     </>
                                   )}
-                                  <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openEdit(p)}
+                                  >
                                     <Pencil className="w-4 h-4" />
                                   </Button>
-                                  <Button size="sm" variant="outline" onClick={() => deletePublication(p.id)}>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => deletePublication(p.id)}
+                                  >
                                     <Trash2 className="w-4 h-4 text-rose-600" />
                                   </Button>
                                   {p.images?.[0] && (
-                                    <Button size="sm" variant="outline" onClick={() => window.open(p.images[0], "_blank")}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        window.open(p.images[0], "_blank")
+                                      }
+                                    >
                                       <Eye className="w-4 h-4" />
                                     </Button>
                                   )}
@@ -439,30 +571,58 @@ export default function SuperAdminPanel() {
                           <TableRow>
                             <TableHead>Nombre</TableHead>
                             <TableHead>Email</TableHead>
+                            <TableHead>Teléfono</TableHead>{" "}
+                            {/* 👈 nuevo campo */}
                             <TableHead>Rol</TableHead>
                             <TableHead className="w-48">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
+
                         <TableBody>
                           {filteredUsers.map((u) => (
-                            <TableRow key={u.id} className="hover:bg-slate-50/60">
-                              <TableCell className="font-medium">{u.full_name || "—"}</TableCell>
+                            <TableRow
+                              key={u.id}
+                              className="hover:bg-slate-50/60"
+                            >
+                              <TableCell className="font-medium">
+                                {u.full_name || "—"}
+                              </TableCell>
                               <TableCell>{u.email || "—"}</TableCell>
-                              <TableCell><RoleBadge role={u.role_type} /></TableCell>
+                              <TableCell>
+                                {u.phone_number || "—"}
+                              </TableCell>{" "}
+                              {/* 👈 nuevo campo */}
+                              <TableCell>
+                                <RoleBadge role={u.role_type} />
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   {u.role_type === "admin" && (
-                                    <Button size="sm" variant="outline" onClick={() => setRole(u.id, "usuario")}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setRole(u.id, "usuario")}
+                                    >
                                       Quitar Admin
                                     </Button>
                                   )}
-                                  {(!u.role_type || u.role_type === "usuario") && (
-                                    <Button size="sm" variant="outline" onClick={() => setRole(u.id, "admin")}>
+                                  {(!u.role_type ||
+                                    u.role_type === "usuario") && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setRole(u.id, "admin")}
+                                    >
                                       Hacer Admin
                                     </Button>
                                   )}
                                   {u.role_type === "superadmin" && (
-                                    <Button size="sm" variant="outline" disabled title="No se puede modificar a superadmin">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled
+                                      title="No se puede modificar a superadmin"
+                                    >
                                       SuperAdmin
                                     </Button>
                                   )}
@@ -508,23 +668,44 @@ export default function SuperAdminPanel() {
                         </TableHeader>
                         <TableBody>
                           {subscriptions.map((s) => (
-                            <TableRow key={s.id} className="hover:bg-slate-50/60">
+                            <TableRow
+                              key={s.id}
+                              className="hover:bg-slate-50/60"
+                            >
                               <TableCell>{s.user_email || "—"}</TableCell>
                               <TableCell className="font-medium">
                                 ${Number(s.amount || 0).toLocaleString()}
                               </TableCell>
-                              <TableCell className="text-sm">{fmtDate(s.start_date)}</TableCell>
-                              <TableCell className="text-sm">{fmtDate(s.end_date)}</TableCell>
-                              <TableCell><StatusBadge status={s.status} /></TableCell>
+                              <TableCell className="text-sm">
+                                {fmtDate(s.start_date)}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {fmtDate(s.end_date)}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={s.status} />
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
                                   {s.status !== "active" && (
-                                    <Button size="sm" variant="outline" onClick={() => setSubscriptionStatus(s.id, "active")}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setSubscriptionStatus(s.id, "active")
+                                      }
+                                    >
                                       Activar
                                     </Button>
                                   )}
                                   {s.status === "active" && (
-                                    <Button size="sm" variant="outline" onClick={() => setSubscriptionStatus(s.id, "inactive")}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setSubscriptionStatus(s.id, "inactive")
+                                      }
+                                    >
                                       Inactivar
                                     </Button>
                                   )}
@@ -552,33 +733,65 @@ export default function SuperAdminPanel() {
           <form onSubmit={saveEdit} className="space-y-4">
             <div>
               <label className="text-sm font-medium">Título</label>
-              <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required />
+              <Input
+                value={editForm.title}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, title: e.target.value })
+                }
+                required
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Descripción</label>
-              <Textarea rows={4} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+              <Textarea
+                rows={4}
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, description: e.target.value })
+                }
+              />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-1">
                 <label className="text-sm font-medium">Categoría</label>
-                <Select value={editForm.category} onValueChange={(v) => setEditForm({ ...editForm, category: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={editForm.category}
+                  onValueChange={(v) =>
+                    setEditForm({ ...editForm, category: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="empleo">Empleo</SelectItem>
                     <SelectItem value="alquiler">Alquiler</SelectItem>
                     <SelectItem value="venta">Venta</SelectItem>
-                    <SelectItem value="emprendimiento">Emprendimiento</SelectItem>
+                    <SelectItem value="emprendimiento">
+                      Emprendimiento
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="md:col-span-1">
                 <label className="text-sm font-medium">Precio</label>
-                <Input type="number" value={editForm.price ?? ""} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+                <Input
+                  type="number"
+                  value={editForm.price ?? ""}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, price: e.target.value })
+                  }
+                />
               </div>
               <div className="md:col-span-1">
                 <label className="text-sm font-medium">Estado</label>
-                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pending">pending</SelectItem>
                     <SelectItem value="active">active</SelectItem>
@@ -589,7 +802,13 @@ export default function SuperAdminPanel() {
             </div>
 
             <div className="flex justify-end gap-2 pt-3">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+              >
+                Cancelar
+              </Button>
               <Button type="submit">Guardar</Button>
             </div>
           </form>
@@ -606,7 +825,9 @@ function KPI({ title, value, icon, accent }) {
       <CardContent className="p-5 flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500">{title}</p>
-          <p className={`text-2xl font-bold ${accent || "text-slate-900"}`}>{value}</p>
+          <p className={`text-2xl font-bold ${accent || "text-slate-900"}`}>
+            {value}
+          </p>
         </div>
         <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
           {icon}

@@ -11,7 +11,9 @@ import Home from "@/pages/Home.jsx";
 import Login from "@/pages/Login.jsx";
 import AdminPanel from "@/pages/AdminPanel.jsx";
 import SuperAdminPanel from "@/pages/SuperAdminPanel.jsx";
+import SettingsProfile from "@/pages/SettingsProfile";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
+
 
 import "./index.css";
 
@@ -33,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/delivery" element={<div>Delivery</div>} />
               <Route path="/restaurant" element={<div>Restaurant</div>} />
               <Route path="/login" element={<Login />} />
+              <Route path="/configuracion" element={<SettingsProfile />} />
 
               {/* protegidas */}
               <Route

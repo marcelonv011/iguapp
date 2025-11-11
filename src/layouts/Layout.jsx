@@ -3,15 +3,30 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
-  Home, Briefcase, Building2, ShoppingBag, Store,
-  UtensilsCrossed, Menu, X, User, LogOut, Settings,
-  Package, Crown, Shield, ChefHat,
+  Home,
+  Briefcase,
+  Building2,
+  ShoppingBag,
+  Store,
+  UtensilsCrossed,
+  Menu,
+  X,
+  User,
+  LogOut,
+  Settings,
+  Package,
+  Crown,
+  Shield,
+  ChefHat,
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/ui/dropdown-menu";
 
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -19,6 +34,7 @@ import { db, auth } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { Badge } from "@/ui/badge";
+import { onSnapshot } from "firebase/firestore"; // 👈 asegurate de importar
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -29,19 +45,25 @@ export default function Layout({ children }) {
   const [profile, setProfile] = useState(null);
 
   // === Cargar perfil desde Firestore ===
-  useEffect(() => {
-    const load = async () => {
-      try {
-        if (!user) { setProfile(null); return; }
-        const ref = doc(db, "users", user.uid);
-        const snap = await getDoc(ref);
-        setProfile(snap.exists() ? { email: user.email, ...snap.data() } : { email: user.email });
-      } catch {
-        setProfile({ email: user?.email });
-      }
-    };
-    load();
-  }, [user]);
+
+useEffect(() => {
+  if (!user) {
+    setProfile(null);
+    return;
+  }
+
+  const ref = doc(db, "users", user.uid);
+  const unsub = onSnapshot(ref, (snap) => {
+    if (snap.exists()) {
+      setProfile({ email: user.email, ...snap.data() });
+    } else {
+      setProfile({ email: user.email });
+    }
+  });
+
+  return () => unsub();
+}, [user]);
+
 
   // === Helpers: nombre e iniciales ===
   const displayName = useMemo(() => {
@@ -52,8 +74,16 @@ export default function Layout({ children }) {
   }, [profile, user]);
 
   const initials = useMemo(() => {
-    const src = (profile?.full_name || user?.displayName || profile?.email || "U").trim();
-    const letters = src.split(/[ ._]/).filter(Boolean).map(s => s[0]?.toUpperCase());
+    const src = (
+      profile?.full_name ||
+      user?.displayName ||
+      profile?.email ||
+      "U"
+    ).trim();
+    const letters = src
+      .split(/[ ._]/)
+      .filter(Boolean)
+      .map((s) => s[0]?.toUpperCase());
     return (letters[0] || "U") + (letters[1] || "");
   }, [profile, user]);
 
@@ -75,8 +105,16 @@ export default function Layout({ children }) {
     { name: "Empleos", href: createPageUrl("Empleos"), icon: Briefcase },
     { name: "Alquileres", href: createPageUrl("Alquileres"), icon: Building2 },
     { name: "Ventas", href: createPageUrl("Ventas"), icon: ShoppingBag },
-    { name: "Emprendimientos", href: createPageUrl("Emprendimientos"), icon: Store },
-    { name: "Delivery", href: createPageUrl("Delivery"), icon: UtensilsCrossed },
+    {
+      name: "Emprendimientos",
+      href: createPageUrl("Emprendimientos"),
+      icon: Store,
+    },
+    {
+      name: "Delivery",
+      href: createPageUrl("Delivery"),
+      icon: UtensilsCrossed,
+    },
   ];
 
   // === Activo (Inicio exacto / resto startsWith) ===
@@ -88,9 +126,12 @@ export default function Layout({ children }) {
   // === Badges de rol ===
   const RolePill = () => {
     const role = profile?.role_type;
-    if (!role) return (
-      <Badge className="gap-1 bg-slate-100 text-slate-700 border border-slate-200">Usuario</Badge>
-    );
+    if (!role)
+      return (
+        <Badge className="gap-1 bg-slate-100 text-slate-700 border border-slate-200">
+          Usuario
+        </Badge>
+      );
     if (role === "superadmin")
       return (
         <Badge className="gap-1 bg-purple-100 text-purple-700 border border-purple-200">
@@ -132,7 +173,9 @@ export default function Layout({ children }) {
                     Ciudad Digital
                   </span>
                 </h1>
-                <p className="text-xs text-slate-500">Tu ciudad en un solo lugar</p>
+                <p className="text-xs text-slate-500">
+                  Tu ciudad en un solo lugar
+                </p>
               </div>
             </Link>
 
@@ -147,9 +190,11 @@ export default function Layout({ children }) {
                     to={item.href}
                     aria-current={active ? "page" : undefined}
                     className={`flex items-center gap-2 px-4 py-2 rounded-2xl transition-all
-                      ${active
-                        ? "bg-slate-900 text-white shadow-sm"
-                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"}
+                      ${
+                        active
+                          ? "bg-slate-900 text-white shadow-sm"
+                          : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                      }
                     `}
                   >
                     <Icon className="w-4 h-4" />
@@ -169,11 +214,16 @@ export default function Layout({ children }) {
                       className="flex items-center gap-3 cursor-pointer rounded-full pl-1 pr-3 py-1 hover:bg-slate-100 transition"
                     >
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-xs font-semibold grid place-items-center shadow-md">
-                        {profile?.photoURL ? (
-                          <img src={profile.photoURL} alt="" className="w-9 h-9 rounded-full object-cover" />
-                        ) : (
-                          <span>{initials}</span>
-                        )}
+                        {profile?.photo_url ? (
+  <img
+    src={profile.photo_url}
+    alt="avatar"
+    className="w-9 h-9 rounded-full object-cover"
+  />
+) : (
+    <span>{initials}</span>
+)}
+
                       </div>
                       <div className="hidden sm:block text-left">
                         <div className="text-sm font-semibold leading-tight truncate max-w-[160px]">
@@ -188,7 +238,9 @@ export default function Layout({ children }) {
 
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="px-3 py-2 text-sm">
-                      <p className="font-medium truncate">{profile?.email || user.email}</p>
+                      <p className="font-medium truncate">
+                        {profile?.email || user.email}
+                      </p>
                       <div className="mt-2">
                         <RolePill />
                         <RoleText />
@@ -197,7 +249,8 @@ export default function Layout({ children }) {
 
                     <DropdownMenuSeparator />
 
-                    {(profile?.role_type === "admin" || profile?.role_type === "superadmin") && (
+                    {(profile?.role_type === "admin" ||
+                      profile?.role_type === "superadmin") && (
                       <>
                         {/* RUTA CORRECTA: /admin */}
                         <DropdownMenuItem asChild>
@@ -233,6 +286,13 @@ export default function Layout({ children }) {
                       </Link>
                     </DropdownMenuItem>
 
+                    <DropdownMenuItem asChild>
+                      <Link to="/configuracion">
+                        <Settings className="w-4 h-4" />
+                        <span className="ml-2">Configuración</span>
+                      </Link>
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem
@@ -249,7 +309,9 @@ export default function Layout({ children }) {
                 </DropdownMenu>
               ) : (
                 <Link to="/login">
-                  <Button variant="primary" size="md" className="rounded-xl">Iniciar Sesión</Button>
+                  <Button variant="primary" size="md" className="rounded-xl">
+                    Iniciar Sesión
+                  </Button>
                 </Link>
               )}
 
@@ -258,10 +320,14 @@ export default function Layout({ children }) {
                 variant="ghost"
                 size="icon"
                 className="lg:hidden"
-                onClick={() => setMobileMenuOpen(v => !v)}
+                onClick={() => setMobileMenuOpen((v) => !v)}
                 aria-label="Abrir menú"
               >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                {mobileMenuOpen ? (
+                  <X className="w-5 h-5" />
+                ) : (
+                  <Menu className="w-5 h-5" />
+                )}
               </Button>
             </div>
           </div>
@@ -280,9 +346,11 @@ export default function Layout({ children }) {
                     to={item.href}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all border
-                      ${active
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "text-slate-700 hover:bg-slate-100 border-slate-200"}
+                      ${
+                        active
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "text-slate-700 hover:bg-slate-100 border-slate-200"
+                      }
                     `}
                   >
                     <Icon className="w-5 h-5" />
@@ -306,24 +374,43 @@ export default function Layout({ children }) {
             <div>
               <h3 className="font-bold text-lg mb-3">Ciudad Digital</h3>
               <p className="text-slate-400 text-sm">
-                Conectamos tu ciudad: empleos, alquileres, ventas, emprendimientos y delivery.
+                Conectamos tu ciudad: empleos, alquileres, ventas,
+                emprendimientos y delivery.
               </p>
             </div>
             <div>
               <h3 className="font-bold text-lg mb-3">Enlaces</h3>
               <div className="space-y-2 text-sm">
-                <Link to={createPageUrl("Empleos")} className="block text-slate-400 hover:text-white">Empleos</Link>
-                <Link to={createPageUrl("Alquileres")} className="block text-slate-400 hover:text-white">Alquileres</Link>
-                <Link to={createPageUrl("Delivery")} className="block text-slate-400 hover:text-white">Delivery</Link>
+                <Link
+                  to={createPageUrl("Empleos")}
+                  className="block text-slate-400 hover:text-white"
+                >
+                  Empleos
+                </Link>
+                <Link
+                  to={createPageUrl("Alquileres")}
+                  className="block text-slate-400 hover:text-white"
+                >
+                  Alquileres
+                </Link>
+                <Link
+                  to={createPageUrl("Delivery")}
+                  className="block text-slate-400 hover:text-white"
+                >
+                  Delivery
+                </Link>
               </div>
             </div>
             <div>
               <h3 className="font-bold text-lg mb-3">Contacto</h3>
-              <p className="text-slate-400 text-sm">¿Querés ser Admin y publicar? Escribinos para más info.</p>
+              <p className="text-slate-400 text-sm">
+                ¿Querés ser Admin y publicar? Escribinos para más info.
+              </p>
             </div>
           </div>
           <div className="border-t border-slate-800 mt-8 pt-6 text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} Ciudad Digital — Todos los derechos reservados.
+            © {new Date().getFullYear()} Ciudad Digital — Todos los derechos
+            reservados.
           </div>
         </div>
       </footer>
