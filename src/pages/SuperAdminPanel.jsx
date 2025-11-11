@@ -1,12 +1,15 @@
+// src/pages/SuperAdminPanel.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  collection, getDocs, doc, getDoc, updateDoc, deleteDoc,
+} from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
 import {
-  Shield, Users, FileText, Calendar, Eye,
-  CheckCircle, XCircle, Search, Home as HomeIcon
+  Shield, Users, FileText, Calendar, Eye, DollarSign,
+  CheckCircle, XCircle, Search, Home as HomeIcon, Pencil, Trash2,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -14,9 +17,28 @@ import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/ui/dialog";
+import { Input } from "@/ui/input";
+import { Textarea } from "@/ui/textarea";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/ui/select";
 import { toast } from "sonner";
 
-// =================== Helpers visuales ===================
+/* =================== Helpers =================== */
+const fmtDate = (v) => {
+  if (!v) return "—";
+  const d = v?.toDate ? v.toDate() : new Date(v);
+  return isNaN(d) ? "—" : d.toLocaleDateString();
+};
+
+const fmtMoneyShort = (n) => {
+  const num = Number(n ?? 0);
+  if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}k`;
+  return `$${num}`;
+};
+
 const StatusBadge = ({ status }) => {
   const cls =
     status === "active"
@@ -49,11 +71,10 @@ const EmptyState = ({ icon: Icon, title, subtitle, action }) => (
   </div>
 );
 
-// =================== Página ===================
+/* =================== Página =================== */
 export default function SuperAdminPanel() {
   const navigate = useNavigate();
 
-  const [authProfile, setAuthProfile] = useState(null);
   const [users, setUsers] = useState([]);
   const [publications, setPublications] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
@@ -63,13 +84,17 @@ export default function SuperAdminPanel() {
   const [pubQuery, setPubQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
 
+  // edición publicación
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({
+    title: "", description: "", category: "empleo", price: "", status: "pending",
+  });
+
   // --- Validar SuperAdmin ---
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        navigate("/login");
-        return;
-      }
+      if (!u) { navigate("/login"); return; }
       const ref = doc(db, "users", u.uid);
       const snap = await getDoc(ref);
       const current = snap.exists() ? snap.data() : null;
@@ -79,7 +104,6 @@ export default function SuperAdminPanel() {
         navigate("/");
         return;
       }
-      setAuthProfile(current);
       loadAll();
     });
     return () => unsub();
@@ -99,26 +123,77 @@ export default function SuperAdminPanel() {
     setLoading(false);
   };
 
-  // --- Acciones ---
+  // --- Acciones publicaciones ---
   const updatePublicationStatus = async (id, status) => {
     await updateDoc(doc(db, "publications", id), { status });
     toast.success(status === "active" ? "Publicación aprobada" : "Publicación rechazada");
     loadAll();
   };
 
-  const changeUserRole = async (id, role_type) => {
-    await updateDoc(doc(db, "users", id), { role_type });
-    toast.success(`Rol actualizado a ${role_type}`);
+  const openEdit = (p) => {
+    setEditing(p);
+    setEditForm({
+      title: p.title || "",
+      description: p.description || "",
+      category: p.category || "empleo",
+      price: p.price ?? "",
+      status: p.status || "pending",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    if (!editing) return;
+    const payload = {
+      title: editForm.title.trim(),
+      description: editForm.description.trim(),
+      category: editForm.category,
+      price: editForm.price === "" ? null : Number(editForm.price),
+      status: editForm.status,
+    };
+    await updateDoc(doc(db, "publications", editing.id), payload);
+    toast.success("Publicación actualizada");
+    setEditOpen(false);
+    setEditing(null);
     loadAll();
   };
 
-  // --- Derivados (contadores + filtros) ---
-  const stats = useMemo(() => ({
-    totalUsers: users.length,
-    admins: users.filter((u) => u.role_type === "admin").length,
-    activeSubscriptions: subscriptions.filter((s) => s.status === "active").length,
-    pendingPublications: publications.filter((p) => p.status === "pending").length,
-  }), [users, publications, subscriptions]);
+  const deletePublication = async (id) => {
+    if (!confirm("¿Eliminar esta publicación?")) return;
+    await deleteDoc(doc(db, "publications", id));
+    toast.success("Publicación eliminada");
+    loadAll();
+  };
+
+  // --- Acciones usuarios ---
+  const setRole = async (id, role_type) => {
+    await updateDoc(doc(db, "users", id), { role_type });
+    toast.success(role_type === "admin" ? "Hecho admin" : "Se quitó admin");
+    loadAll();
+  };
+
+  // --- Derivados (KPIs + filtros) ---
+  const now = new Date();
+  const isSameMonth = (d) =>
+    d && d.getMonth?.() === now.getMonth() && d.getFullYear?.() === now.getFullYear();
+
+  const kpis = useMemo(() => {
+    const totalUsers = users.length;
+    const activeSubs = subscriptions.filter((s) => s.status === "active");
+    const revenueMonth = activeSubs.reduce((acc, s) => {
+      const sd = s.start_date?.toDate ? s.start_date.toDate() : (s.start_date ? new Date(s.start_date) : null);
+      return isSameMonth(sd) ? acc + (Number(s.amount) || 0) : acc;
+    }, 0);
+    const pendingPubs = publications.filter((p) => p.status === "pending").length;
+
+    return {
+      totalUsers,
+      activeSubscriptions: activeSubs.length,
+      pendingPublications: pendingPubs,
+      revenueMonth,
+    };
+  }, [users, subscriptions, publications]);
 
   const filteredPublications = useMemo(() => {
     const q = pubQuery.toLowerCase().trim();
@@ -126,7 +201,7 @@ export default function SuperAdminPanel() {
     return publications.filter(p =>
       (p.title || "").toLowerCase().includes(q) ||
       (p.category || "").toLowerCase().includes(q) ||
-      (p.user_email || "").toLowerCase().includes(q) ||
+      (p.user_email || p.created_by || "").toLowerCase().includes(q) ||
       (p.status || "").toLowerCase().includes(q)
     );
   }, [publications, pubQuery]);
@@ -153,7 +228,7 @@ export default function SuperAdminPanel() {
     <div className="min-h-screen bg-slate-50">
       {/* Banner */}
       <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-12">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center">
               <Shield className="w-6 h-6" />
@@ -173,18 +248,18 @@ export default function SuperAdminPanel() {
       </div>
 
       {/* Contenido */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 pb-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <KPI title="Usuarios" value={stats.totalUsers} icon={<Users className="w-5 h-5 text-blue-600" />} />
-          <KPI title="Admins" value={stats.admins} icon={<Shield className="w-5 h-5 text-purple-600" />} />
-          <KPI title="Suscripciones" value={stats.activeSubscriptions} icon={<Calendar className="w-5 h-5 text-emerald-600" />} />
-          <KPI title="Pendientes" value={stats.pendingPublications} icon={<FileText className="w-5 h-5 text-amber-600" />} />
+          <KPI title="Usuarios" value={kpis.totalUsers} icon={<Users className="w-5 h-5 text-blue-600" />} />
+          <KPI title="Suscripciones activas" value={kpis.activeSubscriptions} icon={<Calendar className="w-5 h-5 text-emerald-600" />} />
+          <KPI title="Pendientes" value={kpis.pendingPublications} icon={<FileText className="w-5 h-5 text-amber-600" />} />
+          <KPI title="Ingresos (mes)" value={fmtMoneyShort(kpis.revenueMonth)} icon={<DollarSign className="w-5 h-5 text-green-600" />} accent="text-green-700" />
         </div>
 
         {/* Tabs */}
         <Tabs defaultValue="publications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-3 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
             <TabsTrigger value="publications">
               Publicaciones
               <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">{publications.length}</span>
@@ -201,7 +276,7 @@ export default function SuperAdminPanel() {
 
           {/* === Publicaciones === */}
           <TabsContent value="publications">
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle>Gestión de Publicaciones</CardTitle>
               </CardHeader>
@@ -209,7 +284,7 @@ export default function SuperAdminPanel() {
                 <div className="mb-4 relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
-                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                     placeholder="Buscar por título, categoría, usuario o estado…"
                     value={pubQuery}
                     onChange={(e) => setPubQuery(e.target.value)}
@@ -232,15 +307,19 @@ export default function SuperAdminPanel() {
                             <TableHead>Categoría</TableHead>
                             <TableHead>Usuario</TableHead>
                             <TableHead>Estado</TableHead>
-                            <TableHead className="w-36">Acciones</TableHead>
+                            <TableHead className="w-48">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {filteredPublications.map((p) => (
-                            <TableRow key={p.id}>
+                            <TableRow key={p.id} className="hover:bg-slate-50/60">
                               <TableCell className="font-medium">{p.title}</TableCell>
-                              <TableCell><Badge className="bg-slate-100 text-slate-700 border border-slate-200">{p.category || "—"}</Badge></TableCell>
-                              <TableCell className="text-sm">{p.user_email || "—"}</TableCell>
+                              <TableCell>
+                                <Badge className="bg-slate-100 text-slate-700 border border-slate-200">
+                                  {p.category || "—"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">{p.user_email || p.created_by || "—"}</TableCell>
                               <TableCell><StatusBadge status={p.status} /></TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
@@ -254,6 +333,12 @@ export default function SuperAdminPanel() {
                                       </Button>
                                     </>
                                   )}
+                                  <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => deletePublication(p.id)}>
+                                    <Trash2 className="w-4 h-4 text-rose-600" />
+                                  </Button>
                                   {p.images?.[0] && (
                                     <Button size="sm" variant="outline" onClick={() => window.open(p.images[0], "_blank")}>
                                       <Eye className="w-4 h-4" />
@@ -274,7 +359,7 @@ export default function SuperAdminPanel() {
 
           {/* === Usuarios === */}
           <TabsContent value="users">
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle>Gestión de Usuarios</CardTitle>
               </CardHeader>
@@ -282,7 +367,7 @@ export default function SuperAdminPanel() {
                 <div className="mb-4 relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
-                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                     placeholder="Buscar por nombre, email o rol…"
                     value={userQuery}
                     onChange={(e) => setUserQuery(e.target.value)}
@@ -304,21 +389,33 @@ export default function SuperAdminPanel() {
                             <TableHead>Nombre</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Rol</TableHead>
-                            <TableHead className="w-40">Acciones</TableHead>
+                            <TableHead className="w-48">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {filteredUsers.map((u) => (
-                            <TableRow key={u.id}>
+                            <TableRow key={u.id} className="hover:bg-slate-50/60">
                               <TableCell className="font-medium">{u.full_name || "—"}</TableCell>
                               <TableCell>{u.email || "—"}</TableCell>
                               <TableCell><RoleBadge role={u.role_type} /></TableCell>
                               <TableCell>
-                                {u.role_type !== "admin" && u.role_type !== "superadmin" && (
-                                  <Button size="sm" variant="outline" onClick={() => changeUserRole(u.id, "admin")}>
-                                    Hacer Admin
-                                  </Button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {u.role_type === "admin" && (
+                                    <Button size="sm" variant="outline" onClick={() => setRole(u.id, "usuario")}>
+                                      Quitar Admin
+                                    </Button>
+                                  )}
+                                  {(!u.role_type || u.role_type === "usuario") && (
+                                    <Button size="sm" variant="outline" onClick={() => setRole(u.id, "admin")}>
+                                      Hacer Admin
+                                    </Button>
+                                  )}
+                                  {u.role_type === "superadmin" && (
+                                    <Button size="sm" variant="outline" disabled title="No se puede modificar a superadmin">
+                                      SuperAdmin
+                                    </Button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -333,7 +430,7 @@ export default function SuperAdminPanel() {
 
           {/* === Suscripciones === */}
           <TabsContent value="subscriptions">
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle>Suscripciones</CardTitle>
               </CardHeader>
@@ -359,11 +456,11 @@ export default function SuperAdminPanel() {
                         </TableHeader>
                         <TableBody>
                           {subscriptions.map((s) => (
-                            <TableRow key={s.id}>
+                            <TableRow key={s.id} className="hover:bg-slate-50/60">
                               <TableCell>{s.user_email || "—"}</TableCell>
-                              <TableCell className="font-medium">${s.amount ?? 0}</TableCell>
-                              <TableCell className="text-sm">{s.start_date || "—"}</TableCell>
-                              <TableCell className="text-sm">{s.end_date || "—"}</TableCell>
+                              <TableCell className="font-medium">{fmtMoneyShort(s.amount)}</TableCell>
+                              <TableCell className="text-sm">{fmtDate(s.start_date)}</TableCell>
+                              <TableCell className="text-sm">{fmtDate(s.end_date)}</TableCell>
                               <TableCell><StatusBadge status={s.status} /></TableCell>
                             </TableRow>
                           ))}
@@ -377,18 +474,71 @@ export default function SuperAdminPanel() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Dialogo Editar Publicación */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Editar Publicación</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Título</label>
+              <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Descripción</label>
+              <Textarea rows={4} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Categoría</label>
+                <Select value={editForm.category} onValueChange={(v) => setEditForm({ ...editForm, category: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="empleo">Empleo</SelectItem>
+                    <SelectItem value="alquiler">Alquiler</SelectItem>
+                    <SelectItem value="venta">Venta</SelectItem>
+                    <SelectItem value="emprendimiento">Emprendimiento</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Precio</label>
+                <Input type="number" value={editForm.price ?? ""} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+              </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Estado</label>
+                <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">pending</SelectItem>
+                    <SelectItem value="active">active</SelectItem>
+                    <SelectItem value="inactive">inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+              <Button type="submit">Guardar</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-// =================== Subcomponentes ===================
-function KPI({ title, value, icon }) {
+/* =================== Subcomponentes =================== */
+function KPI({ title, value, icon, accent }) {
   return (
-    <Card className="bg-white/70 backdrop-blur border-slate-200">
+    <Card className="bg-white/80 backdrop-blur border-slate-200 rounded-2xl shadow-sm">
       <CardContent className="p-5 flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500">{title}</p>
-          <p className="text-2xl font-bold text-slate-900">{value}</p>
+          <p className={`text-2xl font-bold ${accent || "text-slate-900"}`}>{value}</p>
         </div>
         <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
           {icon}

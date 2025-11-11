@@ -112,6 +112,7 @@ export default function Layout({ children }) {
 
   const RoleText = () => {
     const role = profile?.role_type;
+    return null;
   };
 
   return (
@@ -135,7 +136,7 @@ export default function Layout({ children }) {
               </div>
             </Link>
 
-            {/* Desktop nav (con “píldora” oscura cuando activo) */}
+            {/* Desktop nav */}
             <nav className="hidden lg:flex items-center gap-2">
               {mainNavigation.map((item) => {
                 const Icon = item.icon;
@@ -198,12 +199,14 @@ export default function Layout({ children }) {
 
                     {(profile?.role_type === "admin" || profile?.role_type === "superadmin") && (
                       <>
+                        {/* RUTA CORRECTA: /admin */}
                         <DropdownMenuItem asChild>
-                          <Link to={createPageUrl("AdminPanel")}>
+                          <Link to="/admin">
                             <Settings className="w-4 h-4" />
                             <span className="ml-2">Panel de Admin</span>
                           </Link>
                         </DropdownMenuItem>
+
                         <DropdownMenuItem asChild>
                           <Link to={createPageUrl("GestionarRestaurante")}>
                             <ChefHat className="w-4 h-4" />
@@ -214,8 +217,9 @@ export default function Layout({ children }) {
                     )}
 
                     {profile?.role_type === "superadmin" && (
+                      // RUTA CORRECTA: /superadmin
                       <DropdownMenuItem asChild>
-                        <Link to={createPageUrl("SuperAdminPanel")}>
+                        <Link to="/superadmin">
                           <Shield className="w-4 h-4" />
                           <span className="ml-2">Panel SuperAdmin</span>
                         </Link>
@@ -263,7 +267,7 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Mobile nav (también con fondo oscuro cuando activo) */}
+        {/* Mobile nav */}
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-xl">
             <nav className="px-4 py-3 grid grid-cols-2 gap-2">
