@@ -1,3 +1,4 @@
+// src/pages/AdminPanel.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -12,6 +13,8 @@ import {
   orderBy,
   serverTimestamp,
 } from "firebase/firestore";
+import { useSearchParams /*, useNavigate */ } from "react-router-dom";
+
 import { db, auth } from "@/firebase";
 import { Crown, Plus, Edit, Trash2, Upload, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
@@ -37,7 +40,11 @@ import {
 import { toast } from "sonner";
 import { uploadToCloudinary } from "@/lib/uploadImage";
 
-// === formateador de fechas (evita Invalid Date)
+// === helpers
+const hasPriceCategory = (cat) => ["alquiler", "venta"].includes(String(cat));
+const isEmpleo = (cat) => String(cat) === "empleo";
+
+// === util fecha (evita Invalid Date)
 const fmtDate = (v) => {
   if (!v) return "—";
   if (v?.toDate) return v.toDate().toLocaleDateString();
@@ -47,6 +54,9 @@ const fmtDate = (v) => {
 };
 
 export default function AdminPanel() {
+  // const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
 
@@ -55,6 +65,10 @@ export default function AdminPanel() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  const [imageFiles, setImageFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -65,13 +79,60 @@ export default function AdminPanel() {
     contact_phone: "",
     contact_email: "",
     status: "pending",
+
+    // Empleo
+    employment_type: "full-time",
+    work_mode: "onsite",
+    salary_min: "",
+    salary_max: "",
+    company: "",
+
+    // Alquiler
+    rent_type: "mensual",
+    rooms: "",
+    bathrooms: "",
+    furnished: "no",
+    expenses_included: "no",
+
+    // Venta
+    condition: "nuevo",
+    stock: "",
+    brand: "",
+    model: "",
+
+    // Emprendimiento
+    website: "",
+    instagram: "",
+    whatsapp: "",
+    delivery: "no",
   });
 
-  const [imageFiles, setImageFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [imageUrlInput, setImageUrlInput] = useState("");
+  // Abre el diálogo si llega ?new=1&category=...
+  useEffect(() => {
+    const newFlag = searchParams.get("new");
+    const cat = (searchParams.get("category") || "").toLowerCase();
 
-  // === inicio de sesión y rol ===
+    if (newFlag === "1") {
+      setEditing(null);
+      setForm((prev) => ({
+        ...prev,
+        category: ["empleo", "alquiler", "venta", "emprendimiento"].includes(cat)
+          ? cat
+          : "empleo",
+        price: hasPriceCategory(cat) ? prev.price : "",
+      }));
+      setDialogOpen(true);
+    }
+  }, [searchParams]);
+
+  // Si cambia a empleo, recortar imágenes a 1
+  useEffect(() => {
+    if (isEmpleo(form.category) && imageFiles.length > 1) {
+      setImageFiles((prev) => (prev.length ? [prev[0]] : []));
+    }
+  }, [form.category, imageFiles.length]);
+
+  // Auth + rol + cargas iniciales
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
@@ -105,7 +166,7 @@ export default function AdminPanel() {
     return () => unsub();
   }, []);
 
-  // === carga publicaciones ===
+  // Lista del usuario (con fallback sin índice)
   const loadPublications = async (email) => {
     try {
       const qPub = query(
@@ -140,7 +201,7 @@ export default function AdminPanel() {
     }
   };
 
-  // === carga suscripción activa ===
+  // Suscripción vigente
   const loadSubscription = async (email) => {
     const qSub = query(
       collection(db, "subscriptions"),
@@ -153,7 +214,7 @@ export default function AdminPanel() {
     );
   };
 
-  // === helpers ===
+  // Conteo del mes
   const thisMonthCount = useMemo(() => {
     const now = new Date();
     return publications.filter((p) => {
@@ -162,11 +223,7 @@ export default function AdminPanel() {
         : p.created_date
         ? new Date(p.created_date)
         : null;
-      return (
-        d &&
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear()
-      );
+      return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
   }, [publications]);
 
@@ -180,20 +237,54 @@ export default function AdminPanel() {
       contact_phone: "",
       contact_email: "",
       status: "pending",
+
+      // empleo
+      employment_type: "full-time",
+      work_mode: "onsite",
+      salary_min: "",
+      salary_max: "",
+      company: "",
+
+      // alquiler
+      rent_type: "mensual",
+      rooms: "",
+      bathrooms: "",
+      furnished: "no",
+      expenses_included: "no",
+
+      // venta
+      condition: "nuevo",
+      stock: "",
+      brand: "",
+      model: "",
+
+      // emprendimiento
+      website: "",
+      instagram: "",
+      whatsapp: "",
+      delivery: "no",
     });
     setImageFiles([]);
     setEditing(null);
   };
 
-  // === subir imágenes ===
+  // Subida de imágenes
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setUploading(true);
     try {
+      // subir todas las seleccionadas
       const uploaded = [];
       for (const f of files) uploaded.push(await uploadToCloudinary(f));
-      setImageFiles((prev) => [...prev, ...uploaded]);
+
+      if (isEmpleo(form.category)) {
+        // empleo: tomar solo la primera y reemplazar
+        setImageFiles(uploaded.length ? [uploaded[0]] : []);
+      } else {
+        // otras categorías: agregar
+        setImageFiles((prev) => [...prev, ...uploaded]);
+      }
       toast.success("Imágenes subidas");
     } catch (err) {
       console.error(err);
@@ -208,14 +299,19 @@ export default function AdminPanel() {
     if (!url) return;
     try {
       new URL(url);
-      setImageFiles((prev) => [...prev, url]);
+      if (isEmpleo(form.category)) {
+        // empleo: solo 1 (reemplazar si ya existe)
+        setImageFiles([url]);
+      } else {
+        setImageFiles((prev) => [...prev, url]);
+      }
       setImageUrlInput("");
     } catch {
       toast.error("URL inválida");
     }
   };
 
-  // === crear / actualizar ===
+  // Crear / actualizar
   const handleSubmit = async (ev) => {
     ev.preventDefault();
 
@@ -232,7 +328,7 @@ export default function AdminPanel() {
       title: form.title.trim(),
       description: form.description.trim(),
       category: form.category,
-      price: form.price ? Number(form.price) : null,
+      price: hasPriceCategory(form.category) && form.price !== "" ? Number(form.price) : null,
       location: form.location || null,
       contact_phone: form.contact_phone || null,
       contact_email: form.contact_email || user.email,
@@ -242,6 +338,42 @@ export default function AdminPanel() {
       ...(editing ? {} : { created_date: serverTimestamp() }),
       updated_date: serverTimestamp(),
     };
+
+    // Campos por categoría
+    if (form.category === "empleo") {
+      Object.assign(payload, {
+        company: form.company || null,
+        employment_type: form.employment_type,
+        work_mode: form.work_mode,
+        salary_min: form.salary_min ? Number(form.salary_min) : null,
+        salary_max: form.salary_max ? Number(form.salary_max) : null,
+      });
+    }
+    if (form.category === "alquiler") {
+      Object.assign(payload, {
+        rent_type: form.rent_type,
+        rooms: form.rooms || null,
+        bathrooms: form.bathrooms || null,
+        furnished: form.furnished,
+        expenses_included: form.expenses_included,
+      });
+    }
+    if (form.category === "venta") {
+      Object.assign(payload, {
+        condition: form.condition,
+        stock: form.stock ? Number(form.stock) : null,
+        brand: form.brand || null,
+        model: form.model || null,
+      });
+    }
+    if (form.category === "emprendimiento") {
+      Object.assign(payload, {
+        website: form.website || null,
+        instagram: form.instagram || null,
+        whatsapp: form.whatsapp || null,
+        delivery: form.delivery,
+      });
+    }
 
     try {
       if (editing) {
@@ -266,13 +398,40 @@ export default function AdminPanel() {
       title: p.title || "",
       description: p.description || "",
       category: p.category || "empleo",
-      price: p.price || "",
+      price: p.price ?? "",
       location: p.location || "",
       contact_phone: p.contact_phone || "",
       contact_email: p.contact_email || "",
       status: p.status || "pending",
+
+      // empleo
+      company: p.company || "",
+      employment_type: p.employment_type || "full-time",
+      work_mode: p.work_mode || "onsite",
+      salary_min: p.salary_min ?? "",
+      salary_max: p.salary_max ?? "",
+
+      // alquiler
+      rent_type: p.rent_type || "mensual",
+      rooms: p.rooms ?? "",
+      bathrooms: p.bathrooms ?? "",
+      furnished: p.furnished || "no",
+      expenses_included: p.expenses_included || "no",
+
+      // venta
+      condition: p.condition || "nuevo",
+      stock: p.stock ?? "",
+      brand: p.brand || "",
+      model: p.model || "",
+
+      // emprendimiento
+      website: p.website || "",
+      instagram: p.instagram || "",
+      whatsapp: p.whatsapp || "",
+      delivery: p.delivery || "no",
     });
-    setImageFiles(p.images || []);
+    // Si empleo y traía varias imágenes, recortamos a 1 en el editor
+    setImageFiles(Array.isArray(p.images) ? (isEmpleo(p.category) ? [p.images[0]] : p.images) : []);
     setDialogOpen(true);
   };
 
@@ -298,11 +457,11 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-slate-100">
-      {/* Banner naranja */}
+      {/* Banner */}
       <div className="bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 text-white shadow-md mb-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur grid place-items-center">
               <Crown className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -318,6 +477,7 @@ export default function AdminPanel() {
         </div>
       </div>
 
+      {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
         {/* Estado de suscripción */}
         <Card className="mb-8 bg-white/80 backdrop-blur shadow-md rounded-2xl">
@@ -334,7 +494,9 @@ export default function AdminPanel() {
                     <p className="text-sm text-slate-700 mt-1">
                       Publicaciones este mes: <strong>{thisMonthCount}/3</strong>
                     </p>
-                    <p className="text-sm text-slate-700">Vence: {fmtDate(subscription?.end_date)}</p>
+                    <p className="text-sm text-slate-700">
+                      Vence: {fmtDate(subscription?.end_date)}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-1">
@@ -353,7 +515,9 @@ export default function AdminPanel() {
                   open={dialogOpen}
                   onOpenChange={(open) => {
                     setDialogOpen(open);
-                    if (!open) resetForm();
+                    if (!open) {
+                      resetForm();
+                    }
                   }}
                 >
                   <DialogTrigger asChild>
@@ -409,7 +573,13 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                           <Label>Categoría *</Label>
                           <Select
                             value={form.category}
-                            onValueChange={(v) => setForm({ ...form, category: v })}
+                            onValueChange={(v) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                category: v,
+                                price: hasPriceCategory(v) ? prev.price : "",
+                              }))
+                            }
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Elegí categoría" />
@@ -422,15 +592,24 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                             </SelectContent>
                           </Select>
                         </div>
-                        <div>
-                          <Label htmlFor="price">Precio</Label>
-                          <Input
-                            id="price"
-                            type="number"
-                            value={form.price}
-                            onChange={(e) => setForm({ ...form, price: e.target.value })}
-                          />
-                        </div>
+
+                        {hasPriceCategory(form.category) && (
+                          <div>
+                            <Label htmlFor="price">Precio (opcional)</Label>
+                            <Input
+                              id="price"
+                              type="number"
+                              value={form.price}
+                              onChange={(e) => setForm({ ...form, price: e.target.value })}
+                              placeholder={
+                                form.category === "alquiler"
+                                  ? "Ej: 250000 (AR$ por mes/día)"
+                                  : "Ej: 450000"
+                              }
+                              min={0}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -466,15 +645,229 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                         </div>
                       </div>
 
+                      {/* ===== Campos dinámicos por categoría ===== */}
+                      {form.category === "empleo" && (
+                        <div className="rounded-lg border p-4 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Empresa</Label>
+                              <Input
+                                value={form.company}
+                                onChange={(e) => setForm({ ...form, company: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Modalidad</Label>
+                              <Select
+                                value={form.work_mode}
+                                onValueChange={(v) => setForm({ ...form, work_mode: v })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="onsite">Presencial</SelectItem>
+                                  <SelectItem value="hybrid">Híbrido</SelectItem>
+                                  <SelectItem value="remote">Remoto</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>Tipo de puesto</Label>
+                              <Select
+                                value={form.employment_type}
+                                onValueChange={(v) => setForm({ ...form, employment_type: v })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="full-time">Full-time</SelectItem>
+                                  <SelectItem value="part-time">Part-time</SelectItem>
+                                  <SelectItem value="temp">Temporal</SelectItem>
+                                  <SelectItem value="freelance">Freelance</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label>Salario mínimo</Label>
+                                <Input
+                                  type="number"
+                                  value={form.salary_min}
+                                  onChange={(e) => setForm({ ...form, salary_min: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Salario máximo</Label>
+                                <Input
+                                  type="number"
+                                  value={form.salary_max}
+                                  onChange={(e) => setForm({ ...form, salary_max: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {form.category === "alquiler" && (
+                        <div className="rounded-lg border p-4 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Tipo de alquiler</Label>
+                              <Select
+                                value={form.rent_type}
+                                onValueChange={(v) => setForm({ ...form, rent_type: v })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="diario">Por día</SelectItem>
+                                  <SelectItem value="mensual">Por mes</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>Ambientes/Dormitorios</Label>
+                              <Input
+                                value={form.rooms}
+                                onChange={(e) => setForm({ ...form, rooms: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Baños</Label>
+                              <Input
+                                value={form.bathrooms}
+                                onChange={(e) => setForm({ ...form, bathrooms: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label>Amoblado</Label>
+                                <Select
+                                  value={form.furnished}
+                                  onValueChange={(v) => setForm({ ...form, furnished: v })}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="no">No</SelectItem>
+                                    <SelectItem value="si">Sí</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>Servicios incluidos</Label>
+                                <Select
+                                  value={form.expenses_included}
+                                  onValueChange={(v) => setForm({ ...form, expenses_included: v })}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="no">No</SelectItem>
+                                    <SelectItem value="si">Sí</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {form.category === "venta" && (
+                        <div className="rounded-lg border p-4 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Condición</Label>
+                              <Select
+                                value={form.condition}
+                                onValueChange={(v) => setForm({ ...form, condition: v })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="nuevo">Nuevo</SelectItem>
+                                  <SelectItem value="usado">Usado</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>Stock</Label>
+                              <Input
+                                type="number"
+                                value={form.stock}
+                                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Marca</Label>
+                              <Input
+                                value={form.brand}
+                                onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Modelo</Label>
+                              <Input
+                                value={form.model}
+                                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {form.category === "emprendimiento" && (
+                        <div className="rounded-lg border p-4 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Sitio web</Label>
+                              <Input
+                                type="url"
+                                placeholder="https://..."
+                                value={form.website}
+                                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Instagram</Label>
+                              <Input
+                                placeholder="@usuario"
+                                value={form.instagram}
+                                onChange={(e) => setForm({ ...form, instagram: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>WhatsApp</Label>
+                              <Input
+                                placeholder="+54 9 ..."
+                                value={form.whatsapp}
+                                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label>Delivery</Label>
+                              <Select
+                                value={form.delivery}
+                                onValueChange={(v) => setForm({ ...form, delivery: v })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="no">No</SelectItem>
+                                  <SelectItem value="si">Sí</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Imágenes */}
                       <div>
-                        <Label>Imágenes</Label>
+                        <Label>
+                          Imágenes {isEmpleo(form.category) && <span className="text-xs text-slate-500">(solo 1 imagen)</span>}
+                        </Label>
                         <div className="mt-2 flex flex-col gap-2">
                           <input
                             id="images"
                             type="file"
                             accept="image/*"
-                            multiple
+                            // empleo: no multiple
+                            multiple={!isEmpleo(form.category)}
                             onChange={handleImageUpload}
                             className="hidden"
                           />
@@ -486,7 +879,7 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               disabled={uploading}
                             >
                               <Upload className="w-4 h-4 mr-2" />
-                              {uploading ? "Subiendo..." : "Exportar"}
+                              {uploading ? "Subiendo..." : "Subir"}
                             </Button>
 
                             <input
@@ -496,19 +889,24 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               value={imageUrlInput}
                               onChange={(e) => setImageUrlInput(e.target.value)}
                             />
-                            <Button type="button" variant="outline" onClick={handleAddImageByUrl}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleAddImageByUrl}
+                              // empleo: permitir siempre (reemplaza si ya existe)
+                            >
                               Agregar URL
                             </Button>
                           </div>
 
                           {imageFiles.length > 0 && (
-                            <div className="grid grid-cols-4 gap-2 mt-3">
+                            <div className={`grid ${isEmpleo(form.category) ? "grid-cols-1" : "grid-cols-4"} gap-2 mt-3`}>
                               {imageFiles.map((url, idx) => (
                                 <div key={idx} className="relative group">
                                   <img
                                     src={url}
                                     alt={`Preview ${idx}`}
-                                    className="w-full h-20 object-cover rounded-lg"
+                                    className={`w-full ${isEmpleo(form.category) ? "h-48" : "h-20"} object-cover rounded-lg`}
                                   />
                                   <button
                                     type="button"
@@ -548,7 +946,7 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
           </CardContent>
         </Card>
 
-        {/* Lista de publicaciones */}
+        {/* Grilla de publicaciones */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {publications.map((p) => (
             <Card key={p.id} className="hover:shadow-lg transition-all overflow-hidden">
@@ -572,7 +970,13 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                   >
                     {p.status === "active" ? "Activa" : p.status === "pending" ? "Pendiente" : "Inactiva"}
                   </Badge>
-                  <Badge variant="outline">{p.category}</Badge>
+                  <Badge variant="outline">
+                    {p.category === "empleo" ? "Empleo"
+                      : p.category === "alquiler" ? "Alquiler"
+                      : p.category === "venta" ? "Venta"
+                      : p.category === "emprendimiento" ? "Emprendimiento"
+                      : p.category}
+                  </Badge>
                 </div>
 
                 <h3 className="font-bold text-lg mb-2">{p.title}</h3>
@@ -580,7 +984,7 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                   <p className="text-slate-600 text-sm mb-3 line-clamp-2">{p.description}</p>
                 )}
 
-                {typeof p.price === "number" && (
+                {hasPriceCategory(p.category) && typeof p.price === "number" && (
                   <p className="text-xl font-bold text-green-600 mb-3">
                     ${p.price.toLocaleString()}
                   </p>
