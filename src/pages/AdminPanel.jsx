@@ -486,7 +486,7 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               disabled={uploading}
                             >
                               <Upload className="w-4 h-4 mr-2" />
-                              {uploading ? "Subiendo..." : "Subir desde tu PC"}
+                              {uploading ? "Subiendo..." : "Exportar"}
                             </Button>
 
                             <input
