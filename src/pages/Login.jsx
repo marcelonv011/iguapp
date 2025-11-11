@@ -1,9 +1,9 @@
-// src/pages/Login.jsx
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/firebase";
+import { ensureUserDoc } from "@/lib/ensureUserDoc"; // ⬅️ importar helper
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -23,17 +23,19 @@ export default function Login() {
   }, [navigate, from]);
 
   const onSubmit = async ({ email, password }) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate(from, { replace: true });
-    } catch (e) {
-      alert(e?.message || "No se pudo iniciar sesión");
-    }
-  };
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    await ensureUserDoc(cred.user); // ✅ también guardará el número si existe
+    navigate(from, { replace: true });
+  } catch (e) {
+    alert(e?.message || "No se pudo iniciar sesión");
+  }
+};
 
   const loginWithGoogle = async () => {
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+      await ensureUserDoc(cred.user);           // ⬅️ asegura /users/{uid}
       navigate(from, { replace: true });
     } catch (e) {
       alert(e?.message || "Error con Google");
@@ -50,14 +52,25 @@ export default function Login() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="tu@email.com"
-                {...register("email", { required: "Email requerido" })} />
+              <Input
+                id="email"
+                type="email"
+                placeholder="tu@email.com"
+                {...register("email", { required: "Email requerido" })}
+              />
               {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
-              <Input id="password" type="password" placeholder="••••••••"
-                {...register("password", { required: "Contraseña requerida", minLength: { value: 6, message: "Mínimo 6 caracteres" } })} />
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                {...register("password", {
+                  required: "Contraseña requerida",
+                  minLength: { value: 6, message: "Mínimo 6 caracteres" },
+                })}
+              />
               {errors.password && <p className="text-xs text-red-600">{errors.password.message}</p>}
             </div>
             <Button disabled={isSubmitting} className="w-full">
