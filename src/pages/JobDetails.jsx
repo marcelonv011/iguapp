@@ -70,6 +70,8 @@ export default function JobDetails() {
 
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState("");
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -265,217 +267,184 @@ export default function JobDetails() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100">
-      {/* Imagen principal arriba (más chica y centrada) */}
-      {mainImage && (
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-          <div className="overflow-hidden rounded-xl shadow-sm">
-            <img
-              src={mainImage}
-              alt={job.title}
-              className="w-full h-32 md:h-40 lg:h-48 object-cover object-center rounded-xl"
-            />
-          </div>
-        </div>
-      )}
+      {/* Imagen principal más visible (vista previa mediana centrada) */}
+{mainImage && (
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 flex justify-center">
+    <button
+      type="button"
+      onClick={() => {
+        setSelectedImage(mainImage);
+        setImageModalOpen(true);
+      }}
+      className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all cursor-zoom-in group"
+      title="Ver imagen"
+    >
+      <img
+        src={mainImage}
+        alt={job.title}
+        className="w-80 h-48 object-cover object-center transition-transform duration-300 group-hover:scale-[1.03]"
+      />
+    </button>
+  </div>
+)}
+
+
+
+
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Hero */}
-        <Card className="overflow-hidden border-2 border-blue-100 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-11 h-11 rounded-xl bg-blue-100 grid place-items-center">
-                    <Briefcase className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900">
-                    {job.title}
-                  </h1>
-                </div>
+        <Card className="overflow-hidden border border-slate-200 shadow-sm">
+  <CardContent className="p-5">
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      {/* Izquierda: título + metadatos */}
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 grid place-items-center">
+            <Briefcase className="w-5 h-5 text-blue-600" />
+          </div>
+          <h1 className="text-[22px] md:text-[26px] font-extrabold tracking-tight text-slate-900">
+            {job.title}
+          </h1>
+        </div>
 
-                <div className="mt-1 flex flex-wrap items-center gap-3 text-slate-600">
-                  {job.company && (
-                    <span className="inline-flex items-center gap-1">
-                      <Building2 className="w-4 h-4" /> {job.company}
-                    </span>
-                  )}
-                  {job.location && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="w-4 h-4" /> {job.location}
-                    </span>
-                  )}
-                  {toDateSafe(job.created_date) && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="w-4 h-4" />{" "}
-                      {toDateSafe(job.created_date)?.toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+          {job.company && (
+            <span className="inline-flex items-center gap-1">
+              <Building2 className="w-4 h-4" /> {job.company}
+            </span>
+          )}
+          {job.location && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="w-4 h-4" /> {job.location}
+            </span>
+          )}
+          {toDateSafe(job.created_date) && (
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-4 h-4" /> {toDateSafe(job.created_date)?.toLocaleDateString()}
+            </span>
+          )}
+        </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {job.employment_type && (
-                    <Badge variant="secondary" className="rounded-full">
-                      {(job.employment_type || "").replace(/\b\w/g, (m) =>
-                        m.toUpperCase()
-                      )}
-                    </Badge>
-                  )}
-                  {job.work_mode && (
-                    <Badge variant="outline" className="rounded-full">
-                      {job.work_mode === "remote"
-                        ? "Remoto"
-                        : job.work_mode === "hybrid"
-                        ? "Híbrido"
-                        : "Presencial"}
-                    </Badge>
-                  )}
-                  <Badge className="bg-green-600">
-                    <DollarSign className="w-3 h-3 mr-1" /> {salaryText}
-                  </Badge>
-                  {isFav && <Badge className="bg-blue-600">★ Favorito</Badge>}
-                </div>
-              </div>
+        {/* Badges */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {job.employment_type && (
+            <Badge variant="secondary" className="rounded-full text-xs px-2.5 py-0.5">
+              {(job.employment_type || "").replace(/\b\w/g, m => m.toUpperCase())}
+            </Badge>
+          )}
+          {job.work_mode && (
+            <Badge variant="outline" className="rounded-full text-xs px-2.5 py-0.5">
+              {job.work_mode === "remote" ? "Remoto" : job.work_mode === "hybrid" ? "Híbrido" : "Presencial"}
+            </Badge>
+          )}
+          <Badge className="rounded-full text-xs px-2.5 py-0.5 bg-green-600">
+            <DollarSign className="w-3 h-3 mr-1" /> {salaryText}
+          </Badge>
+          {isFav && <Badge className="rounded-full text-xs px-2.5 py-0.5 bg-blue-600">★ Favorito</Badge>}
+        </div>
+      </div>
 
-              {/* Acciones (toolbar bonito y responsivo) */}
-              <div className="flex flex-col gap-3 sm:items-end w-full sm:w-auto">
-                {/* Toolbar superior: compartir + favorito */}
-                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={share}
-                    className="rounded-full px-4 shadow-sm hover:shadow transition-all"
-                    title="Compartir"
-                  >
-                    <Share2 className="w-4 h-4 mr-2" />
-                    Compartir
-                  </Button>
+      {/* Derecha: acciones (píldoras) */}
+      <div className="flex flex-col gap-2 w-full md:w-auto md:items-end">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={share}
+            className="rounded-full px-4 shadow-sm hover:shadow"
+            title="Compartir"
+          >
+            <Share2 className="w-4 h-4 mr-2" /> Compartir
+          </Button>
 
-                  <Button
-                    size="sm"
-                    onClick={toggleFavorite}
-                    disabled={favLoading}
-                    className={`rounded-full px-4 shadow-sm transition-all hover:shadow
-        ${
-          isFav
-            ? "bg-blue-600 hover:bg-blue-700 text-white"
-            : "border border-slate-200 hover:bg-slate-50"
-        }`}
-                    title={
-                      isFav ? "Quitar de favoritos" : "Agregar a favoritos"
-                    }
-                  >
-                    {isFav ? (
-                      <BookmarkCheck className="w-4 h-4 mr-2" />
-                    ) : (
-                      <Bookmark className="w-4 h-4 mr-2" />
-                    )}
-                    Favorito
-                  </Button>
-                </div>
+          <Button
+            size="sm"
+            onClick={toggleFavorite}
+            disabled={favLoading}
+            className={`rounded-full px-4 shadow-sm ${
+              isFav ? "bg-blue-600 hover:bg-blue-700 text-white" : "border border-slate-200 hover:bg-slate-50"
+            }`}
+            title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+          >
+            {isFav ? <BookmarkCheck className="w-4 h-4 mr-2" /> : <Bookmark className="w-4 h-4 mr-2" />}
+            Favorito
+          </Button>
+        </div>
 
-                {/* Acciones principales */}
-                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-                  {(job.whatsapp || job.contact_phone) && (
-                    <Button
-                      onClick={openWhatsApp}
-                      className="rounded-full px-5 shadow-sm bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 focus:ring-2 focus:ring-emerald-300 transition-all"
-                    >
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Postular por WhatsApp
-                    </Button>
-                  )}
+        <div className="flex flex-wrap gap-2">
+          {(job.whatsapp || job.contact_phone) && (
+            <Button
+              onClick={openWhatsApp}
+              className="rounded-full px-5 shadow-sm bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 focus:ring-2 focus:ring-emerald-300"
+            >
+              <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
+            </Button>
+          )}
 
-                  {job.contact_email && (
-                    <a
-                      href={`mailto:${
-                        job.contact_email
-                      }?subject=${encodeURIComponent(
-                        "Postulación: " + job.title
-                      )}`}
-                    >
-                      <Button className="rounded-full px-5 shadow-sm bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-300 transition-all">
-                        <Mail className="w-4 h-4 mr-2" />
-                        Enviar CV
-                      </Button>
-                    </a>
-                  )}
+          {job.contact_email && (
+            <a href={`mailto:${job.contact_email}?subject=${encodeURIComponent("Postulación: " + job.title)}`}>
+              <Button className="rounded-full px-5 shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-300">
+                <Mail className="w-4 h-4 mr-2" /> Enviar CV
+              </Button>
+            </a>
+          )}
 
-                  {job.contact_phone && (
-                    <a href={`tel:${job.contact_phone}`}>
-                      <Button
-                        variant="outline"
-                        className="rounded-full px-5 shadow-sm border-slate-200 hover:bg-slate-50 transition-all"
-                      >
-                        <Phone className="w-4 h-4 mr-2" />
-                        Llamar
-                      </Button>
-                    </a>
-                  )}
+          {job.contact_phone && (
+            <a href={`tel:${job.contact_phone}`}>
+              <Button variant="outline" className="rounded-full px-5 shadow-sm border-slate-200 hover:bg-slate-50">
+                <Phone className="w-4 h-4 mr-2" /> Llamar
+              </Button>
+            </a>
+          )}
 
-                  {/* Reportar como link sutil */}
-                  <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="rounded-full px-4 text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <Flag className="w-4 h-4 mr-2" />
-                        Reportar
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Reportar publicación</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <p className="text-sm text-slate-600">
-                          Contanos brevemente el motivo del reporte. El dueño
-                          verá este reporte en su panel.
-                        </p>
-                        <Textarea
-                          rows={4}
-                          placeholder="Ej: Información falsa, contacto no responde, contenido inapropiado, etc."
-                          value={reportText}
-                          onChange={(e) => setReportText(e.target.value)}
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => setReportOpen(false)}
-                            className="rounded-full"
-                          >
-                            Cancelar
-                          </Button>
-                          <Button
-                            onClick={submitReport}
-                            className="rounded-full"
-                          >
-                            Enviar
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+          <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" className="rounded-full px-4 text-red-600 hover:bg-red-50">
+                <Flag className="w-4 h-4 mr-2" /> Reportar
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader><DialogTitle>Reportar publicación</DialogTitle></DialogHeader>
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">Contanos brevemente el motivo del reporte.</p>
+                <Textarea rows={4} value={reportText} onChange={(e) => setReportText(e.target.value)} />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" className="rounded-full" onClick={() => setReportOpen(false)}>Cancelar</Button>
+                  <Button className="rounded-full" onClick={submitReport}>Enviar</Button>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+
 
         {/* Galería (si hay más imágenes) */}
         {Array.isArray(job.images) && job.images.length > 1 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {job.images.slice(1).map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt={`img-${i + 1}`}
-                className="w-full h-48 object-cover rounded-xl border"
-              />
-            ))}
-          </div>
-        )}
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+    {job.images.slice(1).map((src, i) => (
+      <button
+        key={i}
+        type="button"
+        onClick={() => { setSelectedImage(src); setImageModalOpen(true); }}
+        className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white group"
+        title="Ver imagen"
+      >
+        <img
+  src={src}
+  alt={`img-${i + 1}`}
+  className="w-full h-32 md:h-36 object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+/>
+
+      </button>
+    ))}
+  </div>
+)}
+
 
         {/* Descripción + lateral */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -608,6 +577,22 @@ export default function JobDetails() {
           </div>
         </div>
       </div>
+      {/* Lightbox global */}
+<Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
+  <DialogContent className="max-w-5xl p-0 bg-black/80 border-0 shadow-none">
+    <div className="w-full max-h-[80vh] overflow-hidden rounded-xl">
+      {selectedImage && (
+        <img
+          src={selectedImage}
+          alt="Imagen ampliada"
+          className="w-full h-full object-contain"
+        />
+      )}
+    </div>
+  </DialogContent>
+</Dialog>
+
+
     </div>
   );
 }
