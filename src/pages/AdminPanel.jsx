@@ -13,10 +13,13 @@ import {
   orderBy,
   serverTimestamp,
 } from "firebase/firestore";
-import { useSearchParams /*, useNavigate */ } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { db, auth } from "@/firebase";
-import { Crown, Plus, Edit, Trash2, Upload, AlertCircle } from "lucide-react";
+import {
+  Crown, Plus, Edit, Trash2, Upload, AlertCircle,
+  MapPin, Search, LocateFixed, Wifi, Car, PawPrint, Wind, Flame, X, Check
+} from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -53,8 +56,239 @@ const fmtDate = (v) => {
   return isNaN(d) ? "—" : d.toLocaleDateString();
 };
 
+/* ================= MapSearchDialog (con embed OSM) ================= */
+function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
+  const [q, setQ] = useState(defaultQuery);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState([]);
+  const [picked, setPicked] = useState(null); // {display_name, lat, lon, place_id}
+  const [geoBusy, setGeoBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setQ(defaultQuery || "");
+    setResults([]);
+    setPicked(null);
+  }, [open, defaultQuery]);
+
+  // Buscar (debounced) + autopreview del primer resultado
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      const qq = (q || "").trim();
+      if (!qq) { setResults([]); setPicked(null); return; }
+      try {
+        setLoading(true);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(qq)}&addressdetails=1&limit=8`;
+        const res = await fetch(url, {
+          headers: { "Accept-Language": "es-AR,es;q=0.9" },
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : [];
+        setResults(arr);
+        if (!picked && arr[0]) setPicked(arr[0]); // autopreview
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [q, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUseMyLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error("Tu navegador no permite geolocalización");
+      return;
+    }
+    setGeoBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+          const res = await fetch(url, { headers: { "Accept-Language": "es-AR,es;q=0.9" } });
+          const data = await res.json();
+          const display_name = data?.display_name || `(${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+          const pkt = { place_id: `me-${lat}-${lon}`, lat, lon, display_name };
+          setPicked(pkt);
+          if (!q) setQ(display_name);
+        } catch {
+          toast.error("No se pudo obtener la dirección");
+        } finally {
+          setGeoBusy(false);
+        }
+      },
+      () => {
+        toast.error("No pudimos tomar tu ubicación");
+        setGeoBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  };
+
+  // URLs para embed y para abrir grande
+  const previewSrc = picked
+    ? (() => {
+        const lat = parseFloat(picked.lat);
+        const lon = parseFloat(picked.lon);
+        const d = 0.01; // “zoom” aprox (más chico => más zoom)
+        const bbox = [
+          (lon - d).toFixed(6),
+          (lat - d).toFixed(6),
+          (lon + d).toFixed(6),
+          (lat + d).toFixed(6),
+        ].join("%2C");
+        return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}`;
+      })()
+    : null;
+
+  const bigMapHref = picked
+    ? `https://www.openstreetmap.org/?mlat=${parseFloat(picked.lat)}&mlon=${parseFloat(picked.lon)}#map=16/${parseFloat(picked.lat)}/${parseFloat(picked.lon)}`
+    : null;
+
+    // === dentro de MapSearchDialog, arriba del return ===
+const shortAddress = (item) => {
+  const a = item?.address || {};
+  const street = [a.road, a.pedestrian, a.footway, a.path, a.cycleway].find(Boolean);
+  const number = a.house_number ? `${a.house_number} ` : "";
+  const area = a.neighbourhood || a.suburb || a.quarter || a.city_district;
+  const city = a.city || a.town || a.village || a.municipality;
+  const pieces = [];
+  if (street) pieces.push(`${number}${street}`);
+  if (area && area !== city) pieces.push(area);
+  if (city) pieces.push(city);
+  return pieces.length ? pieces.join(", ") : (item.display_name || "").split(",").slice(0,3).join(", ");
+};
+
+
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Buscar ubicación</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Escribí una dirección (ej: Av. Misiones 123, Puerto Iguazú)"
+              autoFocus
+            />
+            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => { setQ(defaultQuery || ""); setResults([]); setPicked(null); }}
+            title="Limpiar búsqueda"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+          <Button type="button" variant="secondary" onClick={handleUseMyLocation} disabled={geoBusy}>
+            {geoBusy ? "Ubicando..." : (
+              <span className="inline-flex items-center gap-2">
+                <LocateFixed className="w-4 h-4" /> Mi ubicación
+              </span>
+            )}
+          </Button>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Lista de resultados */}
+          <div className="max-h-72 overflow-auto rounded-lg border">
+            {loading ? (
+              <div className="p-4 text-sm text-slate-500">Buscando…</div>
+            ) : results.length === 0 ? (
+              <div className="p-4 text-sm text-slate-500">
+                Escribí una dirección o tocá <span className="font-medium">“Mi ubicación”</span>.
+              </div>
+            ) : (
+              <ul className="divide-y">
+                {results.map((r) => (
+                  <li
+                    key={r.place_id}
+                    className={`p-3 cursor-pointer hover:bg-slate-50 ${picked?.place_id === r.place_id ? "bg-purple-50" : ""}`}
+                    onClick={() => setPicked(r)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 mt-0.5 text-slate-500" />
+                      <div>
+                        <div className="text-sm font-medium">
+                          {r.display_name?.split(",").slice(0, 3).join(", ")}
+                        </div>
+                        <div className="text-xs text-slate-500">{r.display_name}</div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Preview (iframe OSM) */}
+          <div className="rounded-lg border overflow-hidden bg-white">
+            {previewSrc ? (
+              <div className="flex flex-col">
+                <iframe
+                  title="Mapa"
+                  src={previewSrc}
+                  className="w-full h-[300px] border-0"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+                <div className="p-2 text-right">
+                  <a
+                    href={bigMapHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-purple-700 hover:underline"
+                  >
+                    Abrir mapa grande
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6 text-center text-slate-600 text-sm leading-relaxed">
+                El mapa se mostrará acá cuando elijas una dirección o uses <span className="font-medium">“Mi ubicación”</span>.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button
+  disabled={!picked}
+  onClick={() => {
+    if (!picked) return;
+    onSelect({
+      address: shortAddress(picked),              // <— corta y legible
+      full_address: picked.display_name || null,  // <— opcional: completa
+      lat: parseFloat(picked.lat),
+      lon: parseFloat(picked.lon),
+    });
+    onOpenChange(false);
+  }}
+  className="inline-flex items-center gap-2"
+>
+  <Check className="w-4 h-4" />
+  Usar esta ubicación
+</Button>
+
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ================= AdminPanel ================= */
 export default function AdminPanel() {
-  // const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const [user, setUser] = useState(null);
@@ -80,6 +314,10 @@ export default function AdminPanel() {
     contact_email: "",
     status: "pending",
 
+    // geoloc opcional
+    geo_lat: null,
+    geo_lon: null,
+
     // Empleo
     employment_type: "full-time",
     work_mode: "onsite",
@@ -94,6 +332,15 @@ export default function AdminPanel() {
     furnished: "no",
     expenses_included: "no",
 
+    // NUEVO: comodidades (alquiler)
+    wifi: "no",
+    parking: "no",
+    pets: "no",
+    ac: "no",
+    bbq: "no",
+    balcon: "no",
+    patio: "no",
+
     // Venta
     condition: "nuevo",
     stock: "",
@@ -107,6 +354,9 @@ export default function AdminPanel() {
     delivery: "no",
   });
 
+  // dialogo para mapa
+  const [mapOpen, setMapOpen] = useState(false);
+
   // Abre el diálogo si llega ?new=1&category=...
   useEffect(() => {
     const newFlag = searchParams.get("new");
@@ -116,11 +366,7 @@ export default function AdminPanel() {
       setEditing(null);
       setForm((prev) => ({
         ...prev,
-        category: ["empleo", "alquiler", "venta", "emprendimiento"].includes(
-          cat
-        )
-          ? cat
-          : "empleo",
+        category: ["empleo", "alquiler", "venta", "emprendimiento"].includes(cat) ? cat : "empleo",
         price: hasPriceCategory(cat) ? prev.price : "",
       }));
       setDialogOpen(true);
@@ -158,10 +404,7 @@ export default function AdminPanel() {
           return;
         }
 
-        await Promise.all([
-          loadPublications(u.email),
-          loadSubscription(u.email),
-        ]);
+        await Promise.all([loadPublications(u.email), loadSubscription(u.email)]);
       } catch (e) {
         console.error(e);
         toast.error("No se pudo cargar tu perfil");
@@ -214,9 +457,7 @@ export default function AdminPanel() {
       where("status", "==", "active")
     );
     const snap = await getDocs(qSub);
-    setSubscription(
-      snap.docs[0] ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null
-    );
+    setSubscription(snap.docs[0] ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null);
   };
 
   // Conteo del mes
@@ -228,11 +469,7 @@ export default function AdminPanel() {
         : p.created_date
         ? new Date(p.created_date)
         : null;
-      return (
-        d &&
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear()
-      );
+      return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
   }, [publications]);
 
@@ -247,6 +484,9 @@ export default function AdminPanel() {
       contact_email: "",
       status: "pending",
 
+      geo_lat: null,
+      geo_lon: null,
+
       // empleo
       employment_type: "full-time",
       work_mode: "onsite",
@@ -260,6 +500,15 @@ export default function AdminPanel() {
       bathrooms: "",
       furnished: "no",
       expenses_included: "no",
+
+      // comodidades
+      wifi: "no",
+      parking: "no",
+      pets: "no",
+      ac: "no",
+      bbq: "no",
+      balcon: "no",
+      patio: "no",
 
       // venta
       condition: "nuevo",
@@ -283,15 +532,11 @@ export default function AdminPanel() {
     if (!files.length) return;
     setUploading(true);
     try {
-      // subir todas las seleccionadas
       const uploaded = [];
       for (const f of files) uploaded.push(await uploadToCloudinary(f));
-
       if (isEmpleo(form.category)) {
-        // empleo: tomar solo la primera y reemplazar
         setImageFiles(uploaded.length ? [uploaded[0]] : []);
       } else {
-        // otras categorías: agregar
         setImageFiles((prev) => [...prev, ...uploaded]);
       }
       toast.success("Imágenes subidas");
@@ -309,7 +554,6 @@ export default function AdminPanel() {
     try {
       new URL(url);
       if (isEmpleo(form.category)) {
-        // empleo: solo 1 (reemplazar si ya existe)
         setImageFiles([url]);
       } else {
         setImageFiles((prev) => [...prev, url]);
@@ -341,12 +585,15 @@ export default function AdminPanel() {
         hasPriceCategory(form.category) && form.price !== ""
           ? Number(form.price)
           : null,
-      location: form.location || null,
+      location: form.location || null,          // corta
+  location_full: form.location_full || null,// completa (opcional)
       contact_phone: form.contact_phone || null,
       contact_email: form.contact_email || user.email,
       status: form.status || "pending",
       images: imageFiles,
       created_by: user.email,
+      geo_lat: form.geo_lat ?? null,
+      geo_lon: form.geo_lon ?? null,
       ...(editing ? {} : { created_date: serverTimestamp() }),
       updated_date: serverTimestamp(),
     };
@@ -368,6 +615,14 @@ export default function AdminPanel() {
         bathrooms: form.bathrooms || null,
         furnished: form.furnished,
         expenses_included: form.expenses_included,
+        // comodidades booleanas
+        wifi: form.wifi === "si",
+        parking: form.parking === "si",
+        pets: form.pets === "si",
+        ac: form.ac === "si",
+        bbq: form.bbq === "si",
+        balcon: form.balcon === "si",
+        patio: form.patio === "si",
       });
     }
     if (form.category === "venta") {
@@ -416,6 +671,9 @@ export default function AdminPanel() {
       contact_email: p.contact_email || "",
       status: p.status || "pending",
 
+      geo_lat: p.geo_lat ?? null,
+      geo_lon: p.geo_lon ?? null,
+
       // empleo
       company: p.company || "",
       employment_type: p.employment_type || "full-time",
@@ -430,6 +688,15 @@ export default function AdminPanel() {
       furnished: p.furnished || "no",
       expenses_included: p.expenses_included || "no",
 
+      // comodidades (desde boolean a "si"/"no")
+      wifi: p.wifi ? "si" : "no",
+      parking: p.parking ? "si" : "no",
+      pets: p.pets ? "si" : "no",
+      ac: p.ac ? "si" : "no",
+      bbq: p.bbq ? "si" : "no",
+      balcon: p.balcon ? "si" : "no",
+      patio: p.patio ? "si" : "no",
+
       // venta
       condition: p.condition || "nuevo",
       stock: p.stock ?? "",
@@ -442,7 +709,6 @@ export default function AdminPanel() {
       whatsapp: p.whatsapp || "",
       delivery: p.delivery || "no",
     });
-    // Si empleo y traía varias imágenes, recortamos a 1 en el editor
     setImageFiles(
       Array.isArray(p.images)
         ? isEmpleo(p.category)
@@ -472,6 +738,23 @@ export default function AdminPanel() {
       </div>
     );
   }
+
+  // UI helper: chip toggle "si/no"
+  const ToggleChip = ({ value, onChange, icon: Icon, label }) => (
+    <button
+      type="button"
+      onClick={() => onChange(value === "si" ? "no" : "si")}
+      className={`px-3 py-1 rounded-full border text-sm inline-flex items-center gap-1.5 ${
+        value === "si"
+          ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+      }`}
+      title={label}
+    >
+      {Icon ? <Icon className="w-4 h-4" /> : null}
+      {label}
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-slate-100">
@@ -538,20 +821,17 @@ export default function AdminPanel() {
                   open={dialogOpen}
                   onOpenChange={(open) => {
                     setDialogOpen(open);
-                    if (!open) {
-                      resetForm();
-                    }
+                    if (!open) resetForm();
                   }}
                 >
                   <DialogTrigger asChild>
                     <div>
                       <Button
-                        className={`rounded-xl font-semibold px-5 py-2 text-white shadow-md hover:shadow-lg transition-all border-none focus:outline-none focus:ring-0
-${
-  subscription?.status === "active"
-    ? "bg-green-600 hover:bg-green-700"
-    : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
-}`}
+                        className={`rounded-xl font-semibold px-5 py-2 text-white shadow-md hover:shadow-lg transition-all border-none focus:outline-none focus:ring-0 ${
+                          subscription?.status === "active"
+                            ? "bg-green-600 hover:bg-green-700"
+                            : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
+                        }`}
                         disabled={
                           subscription?.status === "active"
                             ? thisMonthCount >= 3
@@ -560,9 +840,7 @@ ${
                         onClick={(e) => {
                           if (subscription?.status !== "active") {
                             e.preventDefault();
-                            toast.error(
-                              "Tu suscripción está inactiva. Contactanos para activarla."
-                            );
+                            toast.error("Tu suscripción está inactiva. Contactanos para activarla.");
                           }
                         }}
                       >
@@ -587,9 +865,7 @@ ${
                         <Input
                           id="title"
                           value={form.title}
-                          onChange={(e) =>
-                            setForm({ ...form, title: e.target.value })
-                          }
+                          onChange={(e) => setForm({ ...form, title: e.target.value })}
                           required
                         />
                       </div>
@@ -600,9 +876,7 @@ ${
                           id="description"
                           rows={4}
                           value={form.description}
-                          onChange={(e) =>
-                            setForm({ ...form, description: e.target.value })
-                          }
+                          onChange={(e) => setForm({ ...form, description: e.target.value })}
                           required
                         />
                       </div>
@@ -627,9 +901,7 @@ ${
                               <SelectItem value="empleo">Empleo</SelectItem>
                               <SelectItem value="alquiler">Alquiler</SelectItem>
                               <SelectItem value="venta">Venta</SelectItem>
-                              <SelectItem value="emprendimiento">
-                                Emprendimiento
-                              </SelectItem>
+                              <SelectItem value="emprendimiento">Emprendimiento</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -641,59 +913,48 @@ ${
                               id="price"
                               type="number"
                               value={form.price}
-                              onChange={(e) =>
-                                setForm({ ...form, price: e.target.value })
-                              }
-                              placeholder={
-                                form.category === "alquiler"
-                                  ? "Ej: 250000 (AR$ por mes/día)"
-                                  : "Ej: 450000"
-                              }
+                              onChange={(e) => setForm({ ...form, price: e.target.value })}
+                              placeholder={form.category === "alquiler" ? "Ej: 250000 (AR$ por mes/día)" : "Ej: 450000"}
                               min={0}
                             />
                           </div>
                         )}
                       </div>
 
+                      {/* Ubicación + mapa */}
                       <div>
                         <Label htmlFor="location">Ubicación</Label>
-                        <Input
-                          id="location"
-                          value={form.location}
-                          onChange={(e) =>
-                            setForm({ ...form, location: e.target.value })
-                          }
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="phone">Teléfono</Label>
+                        <div className="flex gap-2">
                           <Input
-                            id="phone"
-                            value={form.contact_phone}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                contact_phone: e.target.value,
-                              })
-                            }
+                            id="location"
+                            value={form.location}
+                            onChange={(e) => setForm({ ...form, location: e.target.value })}
+                            placeholder="Dirección, barrio o ciudad"
                           />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="inline-flex items-center gap-2"
+                            onClick={() => setMapOpen(true)}
+                            title="Buscar en mapa"
+                          >
+                            <LocateFixed className="w-4 h-4" />
+                            Mapa
+                          </Button>
                         </div>
-                        <div>
-                          <Label htmlFor="email">Email</Label>
-                          <Input
-                            id="email"
-                            type="email"
-                            value={form.contact_email}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                contact_email: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
+                        {(form.geo_lat != null && form.geo_lon != null) && (
+                          <div className="mt-1 text-xs text-slate-600">
+                            Coordenadas: {form.geo_lat.toFixed(6)}, {form.geo_lon.toFixed(6)}{" "}
+                            ·{" "}
+                            <a
+                              className="underline"
+                              href={`https://www.google.com/maps/search/?api=1&query=${form.geo_lat},${form.geo_lon}`}
+                              target="_blank" rel="noreferrer"
+                            >
+                              Ver en Maps
+                            </a>
+                          </div>
+                        )}
                       </div>
 
                       {/* ===== Campos dinámicos por categoría ===== */}
@@ -704,29 +965,21 @@ ${
                               <Label>Empresa</Label>
                               <Input
                                 value={form.company}
-                                onChange={(e) =>
-                                  setForm({ ...form, company: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, company: e.target.value })}
                               />
                             </div>
                             <div>
                               <Label>Modalidad</Label>
                               <Select
                                 value={form.work_mode}
-                                onValueChange={(v) =>
-                                  setForm({ ...form, work_mode: v })
-                                }
+                                onValueChange={(v) => setForm({ ...form, work_mode: v })}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="onsite">
-                                    Presencial
-                                  </SelectItem>
-                                  <SelectItem value="hybrid">
-                                    Híbrido
-                                  </SelectItem>
+                                  <SelectItem value="onsite">Presencial</SelectItem>
+                                  <SelectItem value="hybrid">Híbrido</SelectItem>
                                   <SelectItem value="remote">Remoto</SelectItem>
                                 </SelectContent>
                               </Select>
@@ -735,24 +988,16 @@ ${
                               <Label>Tipo de puesto</Label>
                               <Select
                                 value={form.employment_type}
-                                onValueChange={(v) =>
-                                  setForm({ ...form, employment_type: v })
-                                }
+                                onValueChange={(v) => setForm({ ...form, employment_type: v })}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="full-time">
-                                    Full-time
-                                  </SelectItem>
-                                  <SelectItem value="part-time">
-                                    Part-time
-                                  </SelectItem>
+                                  <SelectItem value="full-time">Full-time</SelectItem>
+                                  <SelectItem value="part-time">Part-time</SelectItem>
                                   <SelectItem value="temp">Temporal</SelectItem>
-                                  <SelectItem value="freelance">
-                                    Freelance
-                                  </SelectItem>
+                                  <SelectItem value="freelance">Freelance</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -762,12 +1007,7 @@ ${
                                 <Input
                                   type="number"
                                   value={form.salary_min}
-                                  onChange={(e) =>
-                                    setForm({
-                                      ...form,
-                                      salary_min: e.target.value,
-                                    })
-                                  }
+                                  onChange={(e) => setForm({ ...form, salary_min: e.target.value })}
                                 />
                               </div>
                               <div>
@@ -775,12 +1015,7 @@ ${
                                 <Input
                                   type="number"
                                   value={form.salary_max}
-                                  onChange={(e) =>
-                                    setForm({
-                                      ...form,
-                                      salary_max: e.target.value,
-                                    })
-                                  }
+                                  onChange={(e) => setForm({ ...form, salary_max: e.target.value })}
                                 />
                               </div>
                             </div>
@@ -795,20 +1030,14 @@ ${
                               <Label>Tipo de alquiler</Label>
                               <Select
                                 value={form.rent_type}
-                                onValueChange={(v) =>
-                                  setForm({ ...form, rent_type: v })
-                                }
+                                onValueChange={(v) => setForm({ ...form, rent_type: v })}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="diario">
-                                    Por día
-                                  </SelectItem>
-                                  <SelectItem value="mensual">
-                                    Por mes
-                                  </SelectItem>
+                                  <SelectItem value="diario">Por día</SelectItem>
+                                  <SelectItem value="mensual">Por mes</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -816,21 +1045,14 @@ ${
                               <Label>Ambientes/Dormitorios</Label>
                               <Input
                                 value={form.rooms}
-                                onChange={(e) =>
-                                  setForm({ ...form, rooms: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, rooms: e.target.value })}
                               />
                             </div>
                             <div>
                               <Label>Baños</Label>
                               <Input
                                 value={form.bathrooms}
-                                onChange={(e) =>
-                                  setForm({
-                                    ...form,
-                                    bathrooms: e.target.value,
-                                  })
-                                }
+                                onChange={(e) => setForm({ ...form, bathrooms: e.target.value })}
                               />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -838,9 +1060,7 @@ ${
                                 <Label>Amoblado</Label>
                                 <Select
                                   value={form.furnished}
-                                  onValueChange={(v) =>
-                                    setForm({ ...form, furnished: v })
-                                  }
+                                  onValueChange={(v) => setForm({ ...form, furnished: v })}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
@@ -855,9 +1075,7 @@ ${
                                 <Label>Servicios incluidos</Label>
                                 <Select
                                   value={form.expenses_included}
-                                  onValueChange={(v) =>
-                                    setForm({ ...form, expenses_included: v })
-                                  }
+                                  onValueChange={(v) => setForm({ ...form, expenses_included: v })}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
@@ -870,6 +1088,20 @@ ${
                               </div>
                             </div>
                           </div>
+
+                          {/* Comodidades */}
+                          <div className="pt-2">
+                            <Label className="mb-2 block">Comodidades</Label>
+                            <div className="flex flex-wrap gap-2">
+                              <ToggleChip value={form.wifi} onChange={(v) => setForm({ ...form, wifi: v })} icon={Wifi} label="Wi-Fi" />
+                              <ToggleChip value={form.parking} onChange={(v) => setForm({ ...form, parking: v })} icon={Car} label="Cochera" />
+                              <ToggleChip value={form.pets} onChange={(v) => setForm({ ...form, pets: v })} icon={PawPrint} label="Mascotas" />
+                              <ToggleChip value={form.ac} onChange={(v) => setForm({ ...form, ac: v })} icon={Wind} label="Aire acondicionado" />
+                              <ToggleChip value={form.bbq} onChange={(v) => setForm({ ...form, bbq: v })} icon={Flame} label="Parrilla" />
+                              <ToggleChip value={form.balcon} onChange={(v) => setForm({ ...form, balcon: v })} label="Balcón" />
+                              <ToggleChip value={form.patio} onChange={(v) => setForm({ ...form, patio: v })} label="Patio" />
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -880,9 +1112,7 @@ ${
                               <Label>Condición</Label>
                               <Select
                                 value={form.condition}
-                                onValueChange={(v) =>
-                                  setForm({ ...form, condition: v })
-                                }
+                                onValueChange={(v) => setForm({ ...form, condition: v })}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
@@ -898,27 +1128,21 @@ ${
                               <Input
                                 type="number"
                                 value={form.stock}
-                                onChange={(e) =>
-                                  setForm({ ...form, stock: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, stock: e.target.value })}
                               />
                             </div>
                             <div>
                               <Label>Marca</Label>
                               <Input
                                 value={form.brand}
-                                onChange={(e) =>
-                                  setForm({ ...form, brand: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, brand: e.target.value })}
                               />
                             </div>
                             <div>
                               <Label>Modelo</Label>
                               <Input
                                 value={form.model}
-                                onChange={(e) =>
-                                  setForm({ ...form, model: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, model: e.target.value })}
                               />
                             </div>
                           </div>
@@ -934,9 +1158,7 @@ ${
                                 type="url"
                                 placeholder="https://..."
                                 value={form.website}
-                                onChange={(e) =>
-                                  setForm({ ...form, website: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, website: e.target.value })}
                               />
                             </div>
                             <div>
@@ -944,12 +1166,7 @@ ${
                               <Input
                                 placeholder="@usuario"
                                 value={form.instagram}
-                                onChange={(e) =>
-                                  setForm({
-                                    ...form,
-                                    instagram: e.target.value,
-                                  })
-                                }
+                                onChange={(e) => setForm({ ...form, instagram: e.target.value })}
                               />
                             </div>
                             <div>
@@ -957,18 +1174,14 @@ ${
                               <Input
                                 placeholder="+54 9 ..."
                                 value={form.whatsapp}
-                                onChange={(e) =>
-                                  setForm({ ...form, whatsapp: e.target.value })
-                                }
+                                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
                               />
                             </div>
                             <div>
                               <Label>Delivery</Label>
                               <Select
                                 value={form.delivery}
-                                onValueChange={(v) =>
-                                  setForm({ ...form, delivery: v })
-                                }
+                                onValueChange={(v) => setForm({ ...form, delivery: v })}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
@@ -988,9 +1201,7 @@ ${
                         <Label>
                           Imágenes{" "}
                           {isEmpleo(form.category) && (
-                            <span className="text-xs text-slate-500">
-                              (solo 1 imagen)
-                            </span>
+                            <span className="text-xs text-slate-500">(solo 1 imagen)</span>
                           )}
                         </Label>
                         <div className="mt-2 flex flex-col gap-2">
@@ -998,7 +1209,6 @@ ${
                             id="images"
                             type="file"
                             accept="image/*"
-                            // empleo: no multiple
                             multiple={!isEmpleo(form.category)}
                             onChange={handleImageUpload}
                             className="hidden"
@@ -1007,9 +1217,7 @@ ${
                             <Button
                               type="button"
                               variant="outline"
-                              onClick={() =>
-                                document.getElementById("images").click()
-                              }
+                              onClick={() => document.getElementById("images").click()}
                               disabled={uploading}
                             >
                               <Upload className="w-4 h-4 mr-2" />
@@ -1023,40 +1231,23 @@ ${
                               value={imageUrlInput}
                               onChange={(e) => setImageUrlInput(e.target.value)}
                             />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={handleAddImageByUrl}
-                              // empleo: permitir siempre (reemplaza si ya existe)
-                            >
+                            <Button type="button" variant="outline" onClick={handleAddImageByUrl}>
                               Agregar URL
                             </Button>
                           </div>
 
                           {imageFiles.length > 0 && (
-                            <div
-                              className={`grid ${
-                                isEmpleo(form.category)
-                                  ? "grid-cols-1"
-                                  : "grid-cols-4"
-                              } gap-2 mt-3`}
-                            >
+                            <div className={`grid ${isEmpleo(form.category) ? "grid-cols-1" : "grid-cols-4"} gap-2 mt-3`}>
                               {imageFiles.map((url, idx) => (
                                 <div key={idx} className="relative group">
                                   <img
                                     src={url}
                                     alt={`Preview ${idx}`}
-                                    className={`w-full ${
-                                      isEmpleo(form.category) ? "h-48" : "h-20"
-                                    } object-cover rounded-lg`}
+                                    className={`w-full ${isEmpleo(form.category) ? "h-48" : "h-20"} object-cover rounded-lg`}
                                   />
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setImageFiles((prev) =>
-                                        prev.filter((_, i) => i !== idx)
-                                      )
-                                    }
+                                    onClick={() => setImageFiles((prev) => prev.filter((_, i) => i !== idx))}
                                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                     title="Quitar imagen"
                                   >
@@ -1095,16 +1286,9 @@ ${
         {/* Grilla de publicaciones */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {publications.map((p) => (
-            <Card
-              key={p.id}
-              className="hover:shadow-lg transition-all overflow-hidden"
-            >
+            <Card key={p.id} className="hover:shadow-lg transition-all overflow-hidden">
               {p.images?.[0] ? (
-                <img
-                  src={p.images[0]}
-                  alt={p.title}
-                  className="w-full h-48 object-cover"
-                />
+                <img src={p.images[0]} alt={p.title} className="w-full h-48 object-cover" />
               ) : (
                 <div className="w-full h-48 bg-slate-100 grid place-items-center text-slate-400">
                   <Upload className="w-8 h-8" />
@@ -1121,11 +1305,7 @@ ${
                         : "bg-slate-500"
                     }
                   >
-                    {p.status === "active"
-                      ? "Activa"
-                      : p.status === "pending"
-                      ? "Pendiente"
-                      : "Inactiva"}
+                    {p.status === "active" ? "Activa" : p.status === "pending" ? "Pendiente" : "Inactiva"}
                   </Badge>
                   <Badge variant="outline">
                     {p.category === "empleo"
@@ -1142,25 +1322,17 @@ ${
 
                 <h3 className="font-bold text-lg mb-2">{p.title}</h3>
                 {p.description && (
-                  <p className="text-slate-600 text-sm mb-3 line-clamp-2">
-                    {p.description}
+                  <p className="text-slate-600 text-sm mb-3 line-clamp-2">{p.description}</p>
+                )}
+
+                {hasPriceCategory(p.category) && typeof p.price === "number" && (
+                  <p className="text-xl font-bold text-green-600 mb-3">
+                    ${p.price.toLocaleString()}
                   </p>
                 )}
 
-                {hasPriceCategory(p.category) &&
-                  typeof p.price === "number" && (
-                    <p className="text-xl font-bold text-green-600 mb-3">
-                      ${p.price.toLocaleString()}
-                    </p>
-                  )}
-
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => handleEdit(p)}
-                  >
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEdit(p)}>
                     <Edit className="w-4 h-4 mr-1" />
                     Editar
                   </Button>
@@ -1185,6 +1357,24 @@ ${
           )}
         </div>
       </div>
+
+      {/* Diálogo de mapa (fuera para que no se desmonte) */}
+      <MapSearchDialog
+  open={mapOpen}
+  onOpenChange={setMapOpen}
+  defaultQuery={form.location}
+  onSelect={({ address, full_address, lat, lon }) => {
+    setForm((prev) => ({
+      ...prev,
+      location: address,              // corta
+      location_full: full_address || address, // completa (nuevo campo en form)
+      geo_lat: lat,
+      geo_lon: lon,
+    }));
+    toast.success("Ubicación seleccionada");
+  }}
+/>
+
     </div>
   );
 }
