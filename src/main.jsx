@@ -15,6 +15,7 @@ import SuperAdminPanel from "@/pages/SuperAdminPanel.jsx";
 import SettingsProfile from "@/pages/SettingsProfile.jsx";
 import Empleos from "@/pages/Empleos.jsx";
 import JobDetails from "@/pages/JobDetails";
+import Alquileres from "@/pages/Alquileres";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 
 import "./index.css";
@@ -31,7 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               {/* 🌐 Públicas */}
               <Route path="/" element={<Home />} />
               <Route path="/empleos" element={<Empleos />} />
-              <Route path="/alquileres" element={<div>Alquileres</div>} />
+              <Route path="/alquileres" element={<Alquileres />} />
               <Route path="/ventas" element={<div>Ventas</div>} />
               <Route path="/emprendimientos" element={<div>Emprendimientos</div>} />
               <Route path="/delivery" element={<div>Delivery</div>} />
@@ -40,7 +41,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/registro" element={<Registro />} /> {/* ✅ nueva ruta */}
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
-
 
               {/* 🔒 Protegidas */}
               <Route

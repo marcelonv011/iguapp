@@ -116,7 +116,9 @@ export default function AdminPanel() {
       setEditing(null);
       setForm((prev) => ({
         ...prev,
-        category: ["empleo", "alquiler", "venta", "emprendimiento"].includes(cat)
+        category: ["empleo", "alquiler", "venta", "emprendimiento"].includes(
+          cat
+        )
           ? cat
           : "empleo",
         price: hasPriceCategory(cat) ? prev.price : "",
@@ -156,7 +158,10 @@ export default function AdminPanel() {
           return;
         }
 
-        await Promise.all([loadPublications(u.email), loadSubscription(u.email)]);
+        await Promise.all([
+          loadPublications(u.email),
+          loadSubscription(u.email),
+        ]);
       } catch (e) {
         console.error(e);
         toast.error("No se pudo cargar tu perfil");
@@ -223,7 +228,11 @@ export default function AdminPanel() {
         : p.created_date
         ? new Date(p.created_date)
         : null;
-      return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      return (
+        d &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear()
+      );
     }).length;
   }, [publications]);
 
@@ -328,7 +337,10 @@ export default function AdminPanel() {
       title: form.title.trim(),
       description: form.description.trim(),
       category: form.category,
-      price: hasPriceCategory(form.category) && form.price !== "" ? Number(form.price) : null,
+      price:
+        hasPriceCategory(form.category) && form.price !== ""
+          ? Number(form.price)
+          : null,
       location: form.location || null,
       contact_phone: form.contact_phone || null,
       contact_email: form.contact_email || user.email,
@@ -431,7 +443,13 @@ export default function AdminPanel() {
       delivery: p.delivery || "no",
     });
     // Si empleo y traía varias imágenes, recortamos a 1 en el editor
-    setImageFiles(Array.isArray(p.images) ? (isEmpleo(p.category) ? [p.images[0]] : p.images) : []);
+    setImageFiles(
+      Array.isArray(p.images)
+        ? isEmpleo(p.category)
+          ? [p.images[0]]
+          : p.images
+        : []
+    );
     setDialogOpen(true);
   };
 
@@ -471,7 +489,9 @@ export default function AdminPanel() {
                 <span className="text-white">Admin</span>
               </div>
               <h1 className="text-2xl md:text-3xl font-bold">Panel de Admin</h1>
-              <p className="text-white/80 text-sm">Gestioná tus publicaciones y tu plan</p>
+              <p className="text-white/80 text-sm">
+                Gestioná tus publicaciones y tu plan
+              </p>
             </div>
           </div>
         </div>
@@ -484,7 +504,9 @@ export default function AdminPanel() {
           <CardContent className="p-5 md:p-6">
             <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
               <div className="min-w-[240px]">
-                <h3 className="font-semibold text-lg mb-2">Estado de Suscripción</h3>
+                <h3 className="font-semibold text-lg mb-2">
+                  Estado de Suscripción
+                </h3>
 
                 {subscription?.status === "active" ? (
                   <div className="space-y-1">
@@ -492,7 +514,8 @@ export default function AdminPanel() {
                       🟢 Activa
                     </span>
                     <p className="text-sm text-slate-700 mt-1">
-                      Publicaciones este mes: <strong>{thisMonthCount}/3</strong>
+                      Publicaciones este mes:{" "}
+                      <strong>{thisMonthCount}/3</strong>
                     </p>
                     <p className="text-sm text-slate-700">
                       Vence: {fmtDate(subscription?.end_date)}
@@ -524,26 +547,38 @@ export default function AdminPanel() {
                     <div>
                       <Button
                         className={`rounded-xl font-semibold px-5 py-2 text-white shadow-md hover:shadow-lg transition-all border-none focus:outline-none focus:ring-0
-${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"}`}
+${
+  subscription?.status === "active"
+    ? "bg-green-600 hover:bg-green-700"
+    : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
+}`}
                         disabled={
-                          subscription?.status === "active" ? thisMonthCount >= 3 : true
+                          subscription?.status === "active"
+                            ? thisMonthCount >= 3
+                            : true
                         }
                         onClick={(e) => {
                           if (subscription?.status !== "active") {
                             e.preventDefault();
-                            toast.error("Tu suscripción está inactiva. Contactanos para activarla.");
+                            toast.error(
+                              "Tu suscripción está inactiva. Contactanos para activarla."
+                            );
                           }
                         }}
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        {subscription?.status === "active" ? "Nueva Publicación" : "Suscripción Inactiva"}
+                        {subscription?.status === "active"
+                          ? "Nueva Publicación"
+                          : "Suscripción Inactiva"}
                       </Button>
                     </div>
                   </DialogTrigger>
 
                   <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>{editing ? "Editar Publicación" : "Nueva Publicación"}</DialogTitle>
+                      <DialogTitle>
+                        {editing ? "Editar Publicación" : "Nueva Publicación"}
+                      </DialogTitle>
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -552,7 +587,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                         <Input
                           id="title"
                           value={form.title}
-                          onChange={(e) => setForm({ ...form, title: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, title: e.target.value })
+                          }
                           required
                         />
                       </div>
@@ -563,7 +600,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                           id="description"
                           rows={4}
                           value={form.description}
-                          onChange={(e) => setForm({ ...form, description: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, description: e.target.value })
+                          }
                           required
                         />
                       </div>
@@ -588,7 +627,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <SelectItem value="empleo">Empleo</SelectItem>
                               <SelectItem value="alquiler">Alquiler</SelectItem>
                               <SelectItem value="venta">Venta</SelectItem>
-                              <SelectItem value="emprendimiento">Emprendimiento</SelectItem>
+                              <SelectItem value="emprendimiento">
+                                Emprendimiento
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -600,7 +641,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               id="price"
                               type="number"
                               value={form.price}
-                              onChange={(e) => setForm({ ...form, price: e.target.value })}
+                              onChange={(e) =>
+                                setForm({ ...form, price: e.target.value })
+                              }
                               placeholder={
                                 form.category === "alquiler"
                                   ? "Ej: 250000 (AR$ por mes/día)"
@@ -617,7 +660,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                         <Input
                           id="location"
                           value={form.location}
-                          onChange={(e) => setForm({ ...form, location: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, location: e.target.value })
+                          }
                         />
                       </div>
 
@@ -628,7 +673,10 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                             id="phone"
                             value={form.contact_phone}
                             onChange={(e) =>
-                              setForm({ ...form, contact_phone: e.target.value })
+                              setForm({
+                                ...form,
+                                contact_phone: e.target.value,
+                              })
                             }
                           />
                         </div>
@@ -639,7 +687,10 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                             type="email"
                             value={form.contact_email}
                             onChange={(e) =>
-                              setForm({ ...form, contact_email: e.target.value })
+                              setForm({
+                                ...form,
+                                contact_email: e.target.value,
+                              })
                             }
                           />
                         </div>
@@ -653,19 +704,29 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Label>Empresa</Label>
                               <Input
                                 value={form.company}
-                                onChange={(e) => setForm({ ...form, company: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, company: e.target.value })
+                                }
                               />
                             </div>
                             <div>
                               <Label>Modalidad</Label>
                               <Select
                                 value={form.work_mode}
-                                onValueChange={(v) => setForm({ ...form, work_mode: v })}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, work_mode: v })
+                                }
                               >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="onsite">Presencial</SelectItem>
-                                  <SelectItem value="hybrid">Híbrido</SelectItem>
+                                  <SelectItem value="onsite">
+                                    Presencial
+                                  </SelectItem>
+                                  <SelectItem value="hybrid">
+                                    Híbrido
+                                  </SelectItem>
                                   <SelectItem value="remote">Remoto</SelectItem>
                                 </SelectContent>
                               </Select>
@@ -674,14 +735,24 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Label>Tipo de puesto</Label>
                               <Select
                                 value={form.employment_type}
-                                onValueChange={(v) => setForm({ ...form, employment_type: v })}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, employment_type: v })
+                                }
                               >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="full-time">Full-time</SelectItem>
-                                  <SelectItem value="part-time">Part-time</SelectItem>
+                                  <SelectItem value="full-time">
+                                    Full-time
+                                  </SelectItem>
+                                  <SelectItem value="part-time">
+                                    Part-time
+                                  </SelectItem>
                                   <SelectItem value="temp">Temporal</SelectItem>
-                                  <SelectItem value="freelance">Freelance</SelectItem>
+                                  <SelectItem value="freelance">
+                                    Freelance
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -691,7 +762,12 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                                 <Input
                                   type="number"
                                   value={form.salary_min}
-                                  onChange={(e) => setForm({ ...form, salary_min: e.target.value })}
+                                  onChange={(e) =>
+                                    setForm({
+                                      ...form,
+                                      salary_min: e.target.value,
+                                    })
+                                  }
                                 />
                               </div>
                               <div>
@@ -699,7 +775,12 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                                 <Input
                                   type="number"
                                   value={form.salary_max}
-                                  onChange={(e) => setForm({ ...form, salary_max: e.target.value })}
+                                  onChange={(e) =>
+                                    setForm({
+                                      ...form,
+                                      salary_max: e.target.value,
+                                    })
+                                  }
                                 />
                               </div>
                             </div>
@@ -714,12 +795,20 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Label>Tipo de alquiler</Label>
                               <Select
                                 value={form.rent_type}
-                                onValueChange={(v) => setForm({ ...form, rent_type: v })}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, rent_type: v })
+                                }
                               >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="diario">Por día</SelectItem>
-                                  <SelectItem value="mensual">Por mes</SelectItem>
+                                  <SelectItem value="diario">
+                                    Por día
+                                  </SelectItem>
+                                  <SelectItem value="mensual">
+                                    Por mes
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -727,14 +816,21 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Label>Ambientes/Dormitorios</Label>
                               <Input
                                 value={form.rooms}
-                                onChange={(e) => setForm({ ...form, rooms: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, rooms: e.target.value })
+                                }
                               />
                             </div>
                             <div>
                               <Label>Baños</Label>
                               <Input
                                 value={form.bathrooms}
-                                onChange={(e) => setForm({ ...form, bathrooms: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    bathrooms: e.target.value,
+                                  })
+                                }
                               />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -742,9 +838,13 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                                 <Label>Amoblado</Label>
                                 <Select
                                   value={form.furnished}
-                                  onValueChange={(v) => setForm({ ...form, furnished: v })}
+                                  onValueChange={(v) =>
+                                    setForm({ ...form, furnished: v })
+                                  }
                                 >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="no">No</SelectItem>
                                     <SelectItem value="si">Sí</SelectItem>
@@ -755,9 +855,13 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                                 <Label>Servicios incluidos</Label>
                                 <Select
                                   value={form.expenses_included}
-                                  onValueChange={(v) => setForm({ ...form, expenses_included: v })}
+                                  onValueChange={(v) =>
+                                    setForm({ ...form, expenses_included: v })
+                                  }
                                 >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="no">No</SelectItem>
                                     <SelectItem value="si">Sí</SelectItem>
@@ -776,9 +880,13 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Label>Condición</Label>
                               <Select
                                 value={form.condition}
-                                onValueChange={(v) => setForm({ ...form, condition: v })}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, condition: v })
+                                }
                               >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="nuevo">Nuevo</SelectItem>
                                   <SelectItem value="usado">Usado</SelectItem>
@@ -790,21 +898,27 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Input
                                 type="number"
                                 value={form.stock}
-                                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, stock: e.target.value })
+                                }
                               />
                             </div>
                             <div>
                               <Label>Marca</Label>
                               <Input
                                 value={form.brand}
-                                onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, brand: e.target.value })
+                                }
                               />
                             </div>
                             <div>
                               <Label>Modelo</Label>
                               <Input
                                 value={form.model}
-                                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, model: e.target.value })
+                                }
                               />
                             </div>
                           </div>
@@ -820,7 +934,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                                 type="url"
                                 placeholder="https://..."
                                 value={form.website}
-                                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, website: e.target.value })
+                                }
                               />
                             </div>
                             <div>
@@ -828,7 +944,12 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Input
                                 placeholder="@usuario"
                                 value={form.instagram}
-                                onChange={(e) => setForm({ ...form, instagram: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    instagram: e.target.value,
+                                  })
+                                }
                               />
                             </div>
                             <div>
@@ -836,16 +957,22 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                               <Input
                                 placeholder="+54 9 ..."
                                 value={form.whatsapp}
-                                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                                onChange={(e) =>
+                                  setForm({ ...form, whatsapp: e.target.value })
+                                }
                               />
                             </div>
                             <div>
                               <Label>Delivery</Label>
                               <Select
                                 value={form.delivery}
-                                onValueChange={(v) => setForm({ ...form, delivery: v })}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, delivery: v })
+                                }
                               >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="no">No</SelectItem>
                                   <SelectItem value="si">Sí</SelectItem>
@@ -859,7 +986,12 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                       {/* Imágenes */}
                       <div>
                         <Label>
-                          Imágenes {isEmpleo(form.category) && <span className="text-xs text-slate-500">(solo 1 imagen)</span>}
+                          Imágenes{" "}
+                          {isEmpleo(form.category) && (
+                            <span className="text-xs text-slate-500">
+                              (solo 1 imagen)
+                            </span>
+                          )}
                         </Label>
                         <div className="mt-2 flex flex-col gap-2">
                           <input
@@ -875,7 +1007,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                             <Button
                               type="button"
                               variant="outline"
-                              onClick={() => document.getElementById("images").click()}
+                              onClick={() =>
+                                document.getElementById("images").click()
+                              }
                               disabled={uploading}
                             >
                               <Upload className="w-4 h-4 mr-2" />
@@ -900,18 +1034,28 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                           </div>
 
                           {imageFiles.length > 0 && (
-                            <div className={`grid ${isEmpleo(form.category) ? "grid-cols-1" : "grid-cols-4"} gap-2 mt-3`}>
+                            <div
+                              className={`grid ${
+                                isEmpleo(form.category)
+                                  ? "grid-cols-1"
+                                  : "grid-cols-4"
+                              } gap-2 mt-3`}
+                            >
                               {imageFiles.map((url, idx) => (
                                 <div key={idx} className="relative group">
                                   <img
                                     src={url}
                                     alt={`Preview ${idx}`}
-                                    className={`w-full ${isEmpleo(form.category) ? "h-48" : "h-20"} object-cover rounded-lg`}
+                                    className={`w-full ${
+                                      isEmpleo(form.category) ? "h-48" : "h-20"
+                                    } object-cover rounded-lg`}
                                   />
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      setImageFiles((prev) => prev.filter((_, i) => i !== idx))
+                                      setImageFiles((prev) =>
+                                        prev.filter((_, i) => i !== idx)
+                                      )
                                     }
                                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                     title="Quitar imagen"
@@ -936,7 +1080,9 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                         >
                           Cancelar
                         </Button>
-                        <Button type="submit">{editing ? "Actualizar" : "Publicar"}</Button>
+                        <Button type="submit">
+                          {editing ? "Actualizar" : "Publicar"}
+                        </Button>
                       </div>
                     </form>
                   </DialogContent>
@@ -949,9 +1095,16 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
         {/* Grilla de publicaciones */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {publications.map((p) => (
-            <Card key={p.id} className="hover:shadow-lg transition-all overflow-hidden">
+            <Card
+              key={p.id}
+              className="hover:shadow-lg transition-all overflow-hidden"
+            >
               {p.images?.[0] ? (
-                <img src={p.images[0]} alt={p.title} className="w-full h-48 object-cover" />
+                <img
+                  src={p.images[0]}
+                  alt={p.title}
+                  className="w-full h-48 object-cover"
+                />
               ) : (
                 <div className="w-full h-48 bg-slate-100 grid place-items-center text-slate-400">
                   <Upload className="w-8 h-8" />
@@ -968,30 +1121,46 @@ ${subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-re
                         : "bg-slate-500"
                     }
                   >
-                    {p.status === "active" ? "Activa" : p.status === "pending" ? "Pendiente" : "Inactiva"}
+                    {p.status === "active"
+                      ? "Activa"
+                      : p.status === "pending"
+                      ? "Pendiente"
+                      : "Inactiva"}
                   </Badge>
                   <Badge variant="outline">
-                    {p.category === "empleo" ? "Empleo"
-                      : p.category === "alquiler" ? "Alquiler"
-                      : p.category === "venta" ? "Venta"
-                      : p.category === "emprendimiento" ? "Emprendimiento"
+                    {p.category === "empleo"
+                      ? "Empleo"
+                      : p.category === "alquiler"
+                      ? "Alquiler"
+                      : p.category === "venta"
+                      ? "Venta"
+                      : p.category === "emprendimiento"
+                      ? "Emprendimiento"
                       : p.category}
                   </Badge>
                 </div>
 
                 <h3 className="font-bold text-lg mb-2">{p.title}</h3>
                 {p.description && (
-                  <p className="text-slate-600 text-sm mb-3 line-clamp-2">{p.description}</p>
-                )}
-
-                {hasPriceCategory(p.category) && typeof p.price === "number" && (
-                  <p className="text-xl font-bold text-green-600 mb-3">
-                    ${p.price.toLocaleString()}
+                  <p className="text-slate-600 text-sm mb-3 line-clamp-2">
+                    {p.description}
                   </p>
                 )}
 
+                {hasPriceCategory(p.category) &&
+                  typeof p.price === "number" && (
+                    <p className="text-xl font-bold text-green-600 mb-3">
+                      ${p.price.toLocaleString()}
+                    </p>
+                  )}
+
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEdit(p)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => handleEdit(p)}
+                  >
                     <Edit className="w-4 h-4 mr-1" />
                     Editar
                   </Button>

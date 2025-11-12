@@ -46,24 +46,23 @@ export default function Layout({ children }) {
 
   // === Cargar perfil desde Firestore ===
 
-useEffect(() => {
-  if (!user) {
-    setProfile(null);
-    return;
-  }
-
-  const ref = doc(db, "users", user.uid);
-  const unsub = onSnapshot(ref, (snap) => {
-    if (snap.exists()) {
-      setProfile({ email: user.email, ...snap.data() });
-    } else {
-      setProfile({ email: user.email });
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      return;
     }
-  });
 
-  return () => unsub();
-}, [user]);
+    const ref = doc(db, "users", user.uid);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        setProfile({ email: user.email, ...snap.data() });
+      } else {
+        setProfile({ email: user.email });
+      }
+    });
 
+    return () => unsub();
+  }, [user]);
 
   // === Helpers: nombre e iniciales ===
   const displayName = useMemo(() => {
@@ -215,15 +214,14 @@ useEffect(() => {
                     >
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-xs font-semibold grid place-items-center shadow-md">
                         {profile?.photo_url ? (
-  <img
-    src={profile.photo_url}
-    alt="avatar"
-    className="w-9 h-9 rounded-full object-cover"
-  />
-) : (
-    <span>{initials}</span>
-)}
-
+                          <img
+                            src={profile.photo_url}
+                            alt="avatar"
+                            className="w-9 h-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span>{initials}</span>
+                        )}
                       </div>
                       <div className="hidden sm:block text-left">
                         <div className="text-sm font-semibold leading-tight truncate max-w-[160px]">

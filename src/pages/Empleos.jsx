@@ -13,8 +13,7 @@ import {
   Building2,
   BadgeDollarSign,
   Globe,
-  Bookmark,
-  BookmarkCheck,
+  Heart,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -520,31 +519,30 @@ export default function Empleos() {
                     {/* Ribbon si es favorito */}
                     {isFav && (
                       <div className="absolute -right-10 top-5 rotate-45 z-[5]">
-                        <div className="bg-blue-600 text-white text-xs font-semibold px-12 py-1 shadow-sm">
+                        <div className="bg-red-600 text-white text-xs font-semibold px-12 py-1 shadow-sm">
                           FAVORITO
                         </div>
                       </div>
                     )}
 
-                    {/* Botón Favorito */}
-                    <button
-                      onClick={() => toggleFavorite(job)}
-                      disabled={!!favBusy[job.id]}
-                      title={
-                        isFav ? "Quitar de favoritos" : "Agregar a favoritos"
-                      }
-                      className={cn(
-                        "absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur",
-                        "hover:bg-blue-50 transition-colors shadow-sm",
-                        isFav ? "border-blue-500" : "border-slate-200"
-                      )}
-                    >
-                      {isFav ? (
-                        <BookmarkCheck className="w-5 h-5 text-blue-600" />
-                      ) : (
-                        <Bookmark className="w-5 h-5 text-slate-500" />
-                      )}
-                    </button>
+                    {/* Botón Favorito (corazón) */}
+<button
+  onClick={() => toggleFavorite(job)}
+  disabled={!!favBusy[job.id]}
+  title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+  className={cn(
+    "absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur",
+    "hover:bg-blue-50 transition-colors shadow-sm",
+    isFav ? "border-blue-500" : "border-slate-200"
+  )}
+  aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+>
+  <Heart
+    className={cn("w-5 h-5 transition-colors", isFav ? "text-red-600" : "text-slate-500")}
+    fill={isFav ? "currentColor" : "none"}
+  />
+</button>
+
 
                     <CardContent className="p-6">
                       {/* Header con avatar y espacio al ícono */}
@@ -580,7 +578,10 @@ export default function Empleos() {
                                 </Badge>
                               )}
                               {job.work_mode && (
-                                <Badge variant="outline" className="rounded-full">
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full"
+                                >
                                   {job.work_mode === "remote"
                                     ? "Remoto"
                                     : job.work_mode === "hybrid"
