@@ -37,6 +37,8 @@ import {
   PawPrint,
   Wind,
   Flame,
+  BedDouble, 
+  Bath
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -109,6 +111,16 @@ const getAmenities = (p = {}) => {
 
   return chips.filter((c) => c.ok !== undefined);
 };
+
+// helpers para pluralizar dormitorios / baños
+const nLabel = (n, singular, plural) => {
+  const v = String(n ?? "").trim();
+  if (v === "") return "";
+  const num = Number(v);
+  if (!isNaN(num)) return `${num} ${num === 1 ? singular : plural}`;
+  return v; // si guardaste texto tipo "monoambiente"
+};
+
 
 /* ================= Data fetchers ================= */
 async function fetchAlquiler(id) {
@@ -510,6 +522,32 @@ export default function AlquilerDetalle() {
                     {formatter.format(Number(alquiler.price))}/{periodLabel}
                   </div>
                 )}
+
+                {/* Detalles: Dormitorios y Baños */}
+{(alquiler.rooms || alquiler.bathrooms) && (
+  <section>
+    <h3 className="font-semibold text-slate-900 mb-2">Detalles</h3>
+    <div className="grid grid-cols-2 gap-2">
+      {alquiler.rooms && (
+        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+          <BedDouble className="w-4 h-4 text-slate-500" />
+          <span className="text-sm text-slate-800">
+            {nLabel(alquiler.rooms, "dormitorio", "dormitorios")}
+          </span>
+        </div>
+      )}
+      {alquiler.bathrooms && (
+        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+          <Bath className="w-4 h-4 text-slate-500" />
+          <span className="text-sm text-slate-800">
+            {nLabel(alquiler.bathrooms, "baño", "baños")}
+          </span>
+        </div>
+      )}
+    </div>
+  </section>
+)}
+
 
                 {alquiler.description && (
                   <section>
