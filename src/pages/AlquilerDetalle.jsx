@@ -37,8 +37,8 @@ import {
   PawPrint,
   Wind,
   Flame,
-  BedDouble, 
-  Bath
+  BedDouble,
+  Bath,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -65,44 +65,72 @@ const getNormalizedPeriod = (p) => {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  if (/(^|\b)(dia|diario|por dia|daily|per day|day)(\b|$)/.test(raw)) return "dia";
-  if (/(^|\b)(mes|mensual|monthly|per month|month)(\b|$)/.test(raw)) return "mes";
+  if (/(^|\b)(dia|diario|por dia|daily|per day|day)(\b|$)/.test(raw))
+    return "dia";
+  if (/(^|\b)(mes|mensual|monthly|per month|month)(\b|$)/.test(raw))
+    return "mes";
   return "mes";
 };
 
 const formatARS = (n) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number(n || 0));
+  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(
+    Number(n || 0)
+  );
+
+const formatPhone = (s) => {
+  const d = onlyDigits(s);
+  if (!d) return s || "";
+  // Ej: +54 9 3757 123456
+  if (d.startsWith("54")) return `+${d.slice(0,2)} ${d.slice(2,3)} ${d.slice(3,7)} ${d.slice(7)}`;
+  return s;
+};
 
 const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 
 // chips visuales para comodidades con ícono
 const yesNo = (v) =>
-  v === true || String(v).toLowerCase() === "si" || String(v).toLowerCase() === "sí";
+  v === true ||
+  String(v).toLowerCase() === "si" ||
+  String(v).toLowerCase() === "sí";
 
 const getAmenities = (p = {}) => {
   const chips = [];
 
   if (p.wifi !== undefined || p.internet !== undefined) {
     const v = p.wifi ?? p.internet;
-    if (v !== undefined) chips.push({ label: "Wi-Fi", ok: yesNo(v), icon: Wifi });
+    if (v !== undefined)
+      chips.push({ label: "Wi-Fi", ok: yesNo(v), icon: Wifi });
   }
   if (p.parking !== undefined || p.cochera !== undefined) {
     const v = p.parking ?? p.cochera;
-    if (v !== undefined) chips.push({ label: "Cochera", ok: yesNo(v), icon: Car });
+    if (v !== undefined)
+      chips.push({ label: "Cochera", ok: yesNo(v), icon: Car });
   }
-  if (p.pets !== undefined || p.pets_allowed !== undefined || p.mascotas !== undefined) {
+  if (
+    p.pets !== undefined ||
+    p.pets_allowed !== undefined ||
+    p.mascotas !== undefined
+  ) {
     const v = p.pets ?? p.pets_allowed ?? p.mascotas;
-    if (v !== undefined) chips.push({ label: "Mascotas", ok: yesNo(v), icon: PawPrint });
+    if (v !== undefined)
+      chips.push({ label: "Mascotas", ok: yesNo(v), icon: PawPrint });
   }
-  if (p.ac !== undefined || p.aire !== undefined || p.aire_acondicionado !== undefined) {
+  if (
+    p.ac !== undefined ||
+    p.aire !== undefined ||
+    p.aire_acondicionado !== undefined
+  ) {
     const v = p.ac ?? p.aire ?? p.aire_acondicionado;
-    if (v !== undefined) chips.push({ label: "Aire acondicionado", ok: yesNo(v), icon: Wind });
+    if (v !== undefined)
+      chips.push({ label: "Aire acondicionado", ok: yesNo(v), icon: Wind });
   }
   if (p.bbq !== undefined || p.parrilla !== undefined) {
     const v = p.bbq ?? p.parrilla;
-    if (v !== undefined) chips.push({ label: "Parrilla", ok: yesNo(v), icon: Flame });
+    if (v !== undefined)
+      chips.push({ label: "Parrilla", ok: yesNo(v), icon: Flame });
   }
-  if (p.balcon !== undefined) chips.push({ label: "Balcón", ok: yesNo(p.balcon) });
+  if (p.balcon !== undefined)
+    chips.push({ label: "Balcón", ok: yesNo(p.balcon) });
   if (p.patio !== undefined) chips.push({ label: "Patio", ok: yesNo(p.patio) });
   if (p.furnished !== undefined || p.amoblado !== undefined) {
     const v = p.furnished ?? p.amoblado;
@@ -120,7 +148,6 @@ const nLabel = (n, singular, plural) => {
   if (!isNaN(num)) return `${num} ${num === 1 ? singular : plural}`;
   return v; // si guardaste texto tipo "monoambiente"
 };
-
 
 /* ================= Data fetchers ================= */
 async function fetchAlquiler(id) {
@@ -188,7 +215,9 @@ async function fetchSimilares(base, max = 6) {
   let final = filtrados;
   if (base.price) {
     final = final.sort(
-      (a, b) => Math.abs((a.price || 0) - base.price) - Math.abs((b.price || 0) - base.price)
+      (a, b) =>
+        Math.abs((a.price || 0) - base.price) -
+        Math.abs((b.price || 0) - base.price)
     );
   } else {
     final = final.sort(
@@ -218,7 +247,11 @@ export default function AlquilerDetalle() {
     return () => unsub();
   }, []);
 
-  const { data: alquiler, isLoading, isError } = useQuery({
+  const {
+    data: alquiler,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["alquiler", id],
     queryFn: () => fetchAlquiler(id),
   });
@@ -271,11 +304,16 @@ export default function AlquilerDetalle() {
   };
 
   const formatter = useMemo(
-    () => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
+    () =>
+      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
     []
   );
 
-  const periodLabel = alquiler ? (getNormalizedPeriod(alquiler) === "mes" ? "mes" : "día") : "mes";
+  const periodLabel = alquiler
+    ? getNormalizedPeriod(alquiler) === "mes"
+      ? "mes"
+      : "día"
+    : "mes";
 
   // Galería
   const images = alquiler?.images || [];
@@ -303,11 +341,17 @@ export default function AlquilerDetalle() {
 
   const mapsUrl = useMemo(() => {
     const q = alquiler?.address || alquiler?.location || "";
-    return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
+    return q
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+          q
+        )}`
+      : null;
   }, [alquiler]);
 
   const whatsappHref = alquiler?.contact_phone
-    ? `https://wa.me/${onlyDigits(alquiler.contact_phone)}?text=${encodeURIComponent(
+    ? `https://wa.me/${onlyDigits(
+        alquiler.contact_phone
+      )}?text=${encodeURIComponent(
         `Hola, vi tu alquiler "${alquiler?.title}" y me interesa. ¿Sigue disponible?`
       )}`
     : null;
@@ -333,8 +377,12 @@ export default function AlquilerDetalle() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
         <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-        <h2 className="text-xl font-semibold text-slate-800">Alquiler no encontrado</h2>
-        <p className="text-slate-500 mb-6">Puede que haya sido eliminado o no exista.</p>
+        <h2 className="text-xl font-semibold text-slate-800">
+          Alquiler no encontrado
+        </h2>
+        <p className="text-slate-500 mb-6">
+          Puede que haya sido eliminado o no exista.
+        </p>
         <Button asChild>
           <Link to="/alquileres">Volver a Alquileres</Link>
         </Button>
@@ -380,8 +428,13 @@ export default function AlquilerDetalle() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <Badge className="bg-purple-100 text-purple-700">Alquiler</Badge>
-                <Badge variant="outline" className="border-purple-200 text-purple-700">
+                <Badge className="bg-purple-100 text-purple-700">
+                  Alquiler
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="border-purple-200 text-purple-700"
+                >
                   {periodLabel === "mes" ? "Mensual" : "Por día"}
                 </Badge>
                 {alquiler?.created_date && (
@@ -394,10 +447,19 @@ export default function AlquilerDetalle() {
               <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 leading-snug line-clamp-2">
                 {alquiler.title || "Alquiler"}
               </h1>
-              {alquiler.location && (
-                <div className="mt-2 inline-flex items-center text-slate-600">
-                  <MapPin className="w-4 h-4 mr-2 text-slate-400" />
-                  <span className="truncate">{alquiler.location}</span>
+              {(alquiler.address || alquiler.location) && (
+                <div className="inline-flex items-center gap-2 max-w-full">
+                  <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span
+                    className="text-sm sm:text-base text-slate-700 truncate max-w-[60vw] sm:max-w-[420px]"
+                    title={
+                      alquiler.location_full ||
+                      alquiler.address ||
+                      alquiler.location
+                    }
+                  >
+                    {alquiler.address || alquiler.location}
+                  </span>
                 </div>
               )}
             </div>
@@ -408,10 +470,17 @@ export default function AlquilerDetalle() {
                 disabled={favBusy}
                 title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
                 className={`rounded-full p-2 border bg-white/95 backdrop-blur shadow-sm transition-all ${
-                  isFav ? "border-rose-300 ring-2 ring-rose-200" : "border-slate-200 hover:bg-slate-50"
+                  isFav
+                    ? "border-rose-300 ring-2 ring-rose-200"
+                    : "border-slate-200 hover:bg-slate-50"
                 }`}
               >
-                <Heart className={`w-5 h-5 ${isFav ? "text-rose-600" : "text-slate-700"}`} fill={isFav ? "currentColor" : "none"} />
+                <Heart
+                  className={`w-5 h-5 ${
+                    isFav ? "text-rose-600" : "text-slate-700"
+                  }`}
+                  fill={isFav ? "currentColor" : "none"}
+                />
               </button>
               <button
                 onClick={async () => {
@@ -478,7 +547,9 @@ export default function AlquilerDetalle() {
                             <span
                               key={i}
                               className={`h-1.5 rounded-full transition-all ${
-                                i === idx ? "w-6 bg-purple-600" : "w-2.5 bg-white/70"
+                                i === idx
+                                  ? "w-6 bg-purple-600"
+                                  : "w-2.5 bg-white/70"
                               }`}
                             />
                           ))}
@@ -500,11 +571,17 @@ export default function AlquilerDetalle() {
                       key={i}
                       onClick={() => setIdx(i)}
                       className={`h-16 rounded-lg overflow-hidden border ${
-                        i === idx ? "border-purple-600 ring-2 ring-purple-200" : "border-slate-200"
+                        i === idx
+                          ? "border-purple-600 ring-2 ring-purple-200"
+                          : "border-slate-200"
                       }`}
                       title={`Imagen ${i + 1}`}
                     >
-                      <img src={src} alt={`thumb-${i}`} className="w-full h-full object-cover" />
+                      <img
+                        src={src}
+                        alt={`thumb-${i}`}
+                        className="w-full h-full object-cover"
+                      />
                     </button>
                   ))}
                 </div>
@@ -524,34 +601,41 @@ export default function AlquilerDetalle() {
                 )}
 
                 {/* Detalles: Dormitorios y Baños */}
-{(alquiler.rooms || alquiler.bathrooms) && (
-  <section>
-    <h3 className="font-semibold text-slate-900 mb-2">Detalles</h3>
-    <div className="grid grid-cols-2 gap-2">
-      {alquiler.rooms && (
-        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
-          <BedDouble className="w-4 h-4 text-slate-500" />
-          <span className="text-sm text-slate-800">
-            {nLabel(alquiler.rooms, "dormitorio", "dormitorios")}
-          </span>
-        </div>
-      )}
-      {alquiler.bathrooms && (
-        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
-          <Bath className="w-4 h-4 text-slate-500" />
-          <span className="text-sm text-slate-800">
-            {nLabel(alquiler.bathrooms, "baño", "baños")}
-          </span>
-        </div>
-      )}
-    </div>
-  </section>
-)}
-
+                {(alquiler.rooms || alquiler.bathrooms) && (
+                  <section>
+                    <h3 className="font-semibold text-slate-900 mb-2">
+                      Detalles
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {alquiler.rooms && (
+                        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+                          <BedDouble className="w-4 h-4 text-slate-500" />
+                          <span className="text-sm text-slate-800">
+                            {nLabel(
+                              alquiler.rooms,
+                              "dormitorio",
+                              "dormitorios"
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {alquiler.bathrooms && (
+                        <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm">
+                          <Bath className="w-4 h-4 text-slate-500" />
+                          <span className="text-sm text-slate-800">
+                            {nLabel(alquiler.bathrooms, "baño", "baños")}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {alquiler.description && (
                   <section>
-                    <h3 className="font-semibold text-slate-900 mb-2">Descripción</h3>
+                    <h3 className="font-semibold text-slate-900 mb-2">
+                      Descripción
+                    </h3>
                     <p className="text-slate-700 leading-relaxed whitespace-pre-line">
                       {alquiler.description}
                     </p>
@@ -560,7 +644,9 @@ export default function AlquilerDetalle() {
 
                 {amenities.length > 0 && (
                   <section>
-                    <h3 className="font-semibold text-slate-900 mb-2">Comodidades</h3>
+                    <h3 className="font-semibold text-slate-900 mb-2">
+                      Comodidades
+                    </h3>
                     <div className="flex flex-wrap gap-2">
                       {amenities.map((a, i) => {
                         const Icon = a.icon;
@@ -579,65 +665,108 @@ export default function AlquilerDetalle() {
                   </section>
                 )}
 
-                {(alquiler.contact_phone || alquiler.contact_email || mapsUrl) && (
-                  <section className="p-4 rounded-2xl border bg-gradient-to-br from-slate-50 to-white">
-                    <h3 className="font-semibold text-slate-900 mb-3">Contacto</h3>
-                    <div className="space-y-2 text-sm">
-                      {alquiler.contact_phone && (
-                        <div className="inline-flex items-center gap-2">
-                          <Phone className="w-4 h-4 text-slate-500" />
-                          <span>{alquiler.contact_phone}</span>
-                        </div>
-                      )}
-                      {alquiler.contact_email && (
-                        <div className="inline-flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-slate-500" />
-                          <a href={`mailto:${alquiler.contact_email}`} className="underline decoration-dotted">
-                            {alquiler.contact_email}
-                          </a>
-                        </div>
-                      )}
-                      {alquiler.address && (
-                        <div className="inline-flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-slate-500" />
-                          <span className="truncate">{alquiler.address}</span>
-                        </div>
-                      )}
-                    </div>
+                {/* === Contacto (separado) === */}
+{(alquiler.contact_phone || alquiler.contact_email || mapsUrl) && (
+  <section className="p-4 rounded-2xl border bg-gradient-to-br from-slate-50 to-white">
+    <h3 className="font-semibold text-slate-900 mb-3">Contacto</h3>
 
-                    {/* Botones más bonitos */}
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {whatsappHref && (
-                        <a href={whatsappHref} target="_blank" rel="noreferrer">
-                          <Button className="w-full rounded-xl shadow-md hover:shadow-lg transition
-                            bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0">
-                            WhatsApp
-                          </Button>
-                        </a>
-                      )}
-                      {alquiler.contact_email && (
-                        <a href={`mailto:${alquiler.contact_email}`}>
-                          <Button
-                            variant="secondary"
-                            className="w-full rounded-xl shadow-sm hover:shadow-md transition bg-white border border-slate-200"
-                          >
-                            Correo
-                          </Button>
-                        </a>
-                      )}
-                      {mapsUrl && (
-                        <a href={mapsUrl} target="_blank" rel="noreferrer">
-                          <Button
-                            variant="outline"
-                            className="w-full rounded-xl border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shadow-sm"
-                          >
-                            Ver en Maps
-                          </Button>
-                        </a>
-                      )}
-                    </div>
-                  </section>
-                )}
+    <div className="space-y-4">
+      {/* Teléfono */}
+      {alquiler.contact_phone && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+            Teléfono
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 min-w-0">
+              <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+              <span className="text-sm text-slate-800 truncate" title={alquiler.contact_phone}>
+                {formatPhone(alquiler.contact_phone)}
+              </span>
+            </div>
+          </div>
+
+          {/* Botón WhatsApp si hay teléfono */}
+          <div className="mt-2">
+            <a
+              href={`https://wa.me/${onlyDigits(alquiler.contact_phone)}?text=${encodeURIComponent(
+                `Hola, vi tu alquiler "${alquiler?.title}" y me interesa. ¿Sigue disponible?`
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Button
+                className="w-full sm:w-auto rounded-xl shadow-md hover:shadow-lg transition bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0"
+              >
+                WhatsApp
+              </Button>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Email */}
+      {alquiler.contact_email && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+            Email
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 min-w-0">
+              <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+              <a
+                href={`mailto:${alquiler.contact_email}`}
+                className="text-sm text-slate-800 underline decoration-dotted truncate"
+                title={alquiler.contact_email}
+              >
+                {alquiler.contact_email}
+              </a>
+            </div>
+            <div className="shrink-0 flex items-center gap-1.5">
+              <button
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(alquiler.contact_email); toast.success("Email copiado"); } catch {}
+                }}
+                className="text-xs px-2 py-1 rounded-md border bg-white hover:bg-slate-50"
+                title="Copiar"
+              >
+                Copiar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dirección */}
+      {alquiler.address && (
+        <div>
+          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+            Dirección
+          </p>
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+            <span className="text-sm text-slate-700 truncate" title={alquiler.address}>
+              {alquiler.address}
+            </span>
+          </div>
+          {mapsUrl && (
+            <div className="mt-2">
+              <a href={mapsUrl} target="_blank" rel="noreferrer">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto rounded-xl border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shadow-sm"
+                >
+                  Ver en Maps
+                </Button>
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  </section>
+)}
+
               </CardContent>
             </Card>
           </div>
@@ -646,8 +775,13 @@ export default function AlquilerDetalle() {
         {/* Similares */}
         <div className="mt-12">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-slate-900">Otros alquileres similares</h2>
-            <Link to="/alquileres" className="text-sm text-purple-700 hover:underline">
+            <h2 className="text-xl font-bold text-slate-900">
+              Otros alquileres similares
+            </h2>
+            <Link
+              to="/alquileres"
+              className="text-sm text-purple-700 hover:underline"
+            >
               Ver todos
             </Link>
           </div>
@@ -674,7 +808,9 @@ export default function AlquilerDetalle() {
                 const cover = p.images?.[0];
                 const per = getNormalizedPeriod(p);
                 const priceLabel =
-                  p.price != null ? `${formatARS(p.price)}/${per === "mes" ? "mes" : "día"}` : null;
+                  p.price != null
+                    ? `${formatARS(p.price)}/${per === "mes" ? "mes" : "día"}`
+                    : null;
 
                 return (
                   <Card
@@ -701,14 +837,21 @@ export default function AlquilerDetalle() {
                           {per === "mes" ? "Mensual" : "Por día"}
                         </span>
                       </div>
-                      <h3 className="font-semibold text-slate-900 line-clamp-1 mb-1">{p.title}</h3>
-                      <p className="text-sm text-slate-600 line-clamp-2 mb-3">{p.description}</p>
+                      <h3 className="font-semibold text-slate-900 line-clamp-1 mb-1">
+                        {p.title}
+                      </h3>
+                      <p className="text-sm text-slate-600 line-clamp-2 mb-3">
+                        {p.description}
+                      </p>
                       {priceLabel && (
                         <div className="text-sm font-bold text-purple-700 mb-3 inline-flex items-center gap-1">
                           <DollarSign className="w-4 h-4" /> {priceLabel}
                         </div>
                       )}
-                      <Button asChild className="w-full rounded-xl bg-white border border-slate-200 hover:bg-slate-50">
+                      <Button
+                        asChild
+                        className="w-full rounded-xl bg-white border border-slate-200 hover:bg-slate-50"
+                      >
                         <Link to={`/alquileres/${p.id}`}>Ver detalles</Link>
                       </Button>
                     </CardContent>
@@ -721,34 +864,36 @@ export default function AlquilerDetalle() {
       </div>
 
       {/* Barra flotante (mobile) */}
-      {(alquiler.price || alquiler.contact_phone || alquiler.contact_email) && (
-        <div className="fixed bottom-0 inset-x-0 z-20 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-lg sm:hidden">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-            {(alquiler.price || alquiler.price === 0) && (
-              <div className="text-base font-extrabold text-purple-700 inline-flex items-center">
-                <DollarSign className="w-4 h-4" />
-                {formatARS(alquiler.price)}/{periodLabel}
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              {whatsappHref && (
-                <a href={whatsappHref} target="_blank" rel="noreferrer">
-                  <Button size="sm" className="rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow">
-                    WhatsApp
-                  </Button>
-                </a>
-              )}
-              {alquiler.contact_email && (
-                <a href={`mailto:${alquiler.contact_email}`}>
-                  <Button size="sm" variant="secondary" className="rounded-lg bg-white border border-slate-200">
-                    Correo
-                  </Button>
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+{(alquiler.price || alquiler.contact_phone || alquiler.contact_email) && (
+  <div className="fixed bottom-0 inset-x-0 z-20 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-lg sm:hidden">
+    <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-2 gap-2">
+      {alquiler.contact_phone ? (
+        <>
+        </>
+      ) : null}
+
+      {(!alquiler.contact_phone && alquiler.contact_email) ? (
+        <>
+          <a href={`mailto:${alquiler.contact_email}`}>
+            <Button className="w-full rounded-lg">Correo</Button>
+          </a>
+          {mapsUrl ? (
+            <a href={mapsUrl} target="_blank" rel="noreferrer">
+              <Button variant="outline" className="w-full rounded-lg">
+                Maps
+              </Button>
+            </a>
+          ) : (
+            <Button variant="outline" className="w-full rounded-lg" disabled>
+              —
+            </Button>
+          )}
+        </>
+      ) : null}
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

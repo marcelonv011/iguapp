@@ -1,10 +1,99 @@
 @import "tailwindcss";
 
-.gradient-title{
+/* ===== Estilos personalizados IguApp ===== */
+
+/* === Tipografía y suavizado general === */
+html, body {
+  height: 100%;
+  -webkit-text-size-adjust: 100%; /* evita zoom raro en iOS */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background-color: #fafafa;
+}
+
+/* === Safe areas (para iPhone con notch) === */
+.safe-top    { padding-top:    env(safe-area-inset-top); }
+.safe-right  { padding-right:  env(safe-area-inset-right); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-left   { padding-left:   env(safe-area-inset-left); }
+
+/* Márgenes si preferís margen en vez de padding */
+.safe-mt { margin-top:    env(safe-area-inset-top); }
+.safe-mr { margin-right:  env(safe-area-inset-right); }
+.safe-mb { margin-bottom: env(safe-area-inset-bottom); }
+.safe-ml { margin-left:   env(safe-area-inset-left); }
+
+/* === Alturas móviles === 
+   Usa:
+   - min-h-[100svh] → altura estable en móvil
+   - h-[100dvh] → altura exacta del viewport dinámico
+*/
+:root {
+  --vh: 1svh;
+}
+
+/* === Scroll iOS más suave === */
+* {
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* === Focus accesible === */
+@layer base {
+  :focus-visible {
+    outline: 2px solid theme('colors.purple.500');
+    outline-offset: 2px;
+  }
+}
+
+/* === Formularios táctiles cómodos === */
+@layer components {
+  .field {
+    @apply h-11 rounded-xl text-base;
+  }
+  .touch-target {
+    min-height: 44px; /* recomendado por Apple HIG */
+  }
+}
+
+/* === Utilidades personalizadas === */
+
+/* Títulos con gradiente */
+.gradient-title {
   background: linear-gradient(90deg, #dbeafe 0%, #60a5fa 20%, #c4b5fd 60%, #e9d5ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-.clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.clamp-1{ display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+
+/* Clamps de texto */
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Truncados con ancho fijo */
+.truncate-220 { max-width: 220px; }
+.truncate-320 { max-width: 320px; }
+
+/* Animación ligera para toques */
+.button-tap {
+  transition: transform 0.1s ease;
+}
+.button-tap:active {
+  transform: scale(0.97);
+}
+
+/* Fondo degradado general */
+.app-bg {
+  @apply bg-gradient-to-b from-purple-50 via-white to-slate-100;
+}

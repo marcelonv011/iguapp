@@ -86,7 +86,7 @@ const RoleBadge = ({ role }) => {
       ? "bg-purple-100 text-purple-700 border border-purple-200"
       : r === "admin"
       ? "bg-amber-100 text-amber-700 border border-amber-200"
-      : "bg-blue-100 text-blue-700 border border-blue-200";
+      : "bg-blue-100 text-blue-700 border-blue-200";
   return <Badge className={`capitalize ${cls}`}>{r}</Badge>;
 };
 
@@ -294,7 +294,7 @@ export default function SuperAdminPanel() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 overflow-x-hidden">
       {/* Banner */}
       <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-12">
@@ -360,7 +360,7 @@ export default function SuperAdminPanel() {
               </option>
             ))}
           </select>
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-slate-500 w-full sm:w-auto">
             Total:{" "}
             <span className="font-semibold text-emerald-700">
               ${Number(kpis.revenueMonth || 0).toLocaleString()}
@@ -395,7 +395,7 @@ export default function SuperAdminPanel() {
 
         {/* Tabs */}
         <Tabs defaultValue="publications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
             <TabsTrigger value="publications">
               Publicaciones
               <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
@@ -442,97 +442,78 @@ export default function SuperAdminPanel() {
                 ) : (
                   <div className="rounded-lg border border-slate-200 overflow-hidden">
                     <div className="max-h-[60vh] overflow-auto">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-white z-10">
-                          <TableRow>
-                            <TableHead>Título</TableHead>
-                            <TableHead>Categoría</TableHead>
-                            <TableHead>Usuario</TableHead>
-                            <TableHead>Estado</TableHead>
-                            <TableHead className="w-48">Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredPublications.map((p) => (
-                            <TableRow
-                              key={p.id}
-                              className="hover:bg-slate-50/60"
-                            >
-                              <TableCell className="font-medium">
-                                {p.title}
-                              </TableCell>
-                              <TableCell>
-                                <Badge className="bg-slate-100 text-slate-700 border border-slate-200">
-                                  {p.category || "—"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                {p.user_email || p.created_by || "—"}
-                              </TableCell>
-                              <TableCell>
-                                <StatusBadge status={p.status} />
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {p.status === "pending" && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          updatePublicationStatus(
-                                            p.id,
-                                            "active"
-                                          )
-                                        }
-                                      >
-                                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          updatePublicationStatus(
-                                            p.id,
-                                            "inactive"
-                                          )
-                                        }
-                                      >
-                                        <XCircle className="w-4 h-4 text-rose-600" />
-                                      </Button>
-                                    </>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openEdit(p)}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => deletePublication(p.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4 text-rose-600" />
-                                  </Button>
-                                  {p.images?.[0] && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        window.open(p.images[0], "_blank")
-                                      }
-                                    >
-                                      <Eye className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[720px] sm:min-w-0">
+                          <TableHeader className="sticky top-0 bg-white z-10">
+                            <TableRow>
+                              <TableHead className="w-[40%]">Título</TableHead>
+                              <TableHead className="hidden sm:table-cell">Categoría</TableHead>
+                              <TableHead className="hidden md:table-cell">Usuario</TableHead>
+                              <TableHead>Estado</TableHead>
+                              <TableHead className="w-40 sm:w-48">Acciones</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredPublications.map((p) => (
+                              <TableRow key={p.id} className="hover:bg-slate-50/60">
+                                <TableCell className="font-medium max-w-[280px] sm:max-w-none">
+                                  <div className="truncate" title={p.title}>{p.title}</div>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  <Badge className="bg-slate-100 text-slate-700 border border-slate-200 capitalize">
+                                    {p.category || "—"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell text-sm">
+                                  <span className="truncate block max-w-[220px]" title={p.user_email || p.created_by || "—"}>
+                                    {p.user_email || p.created_by || "—"}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <StatusBadge status={p.status} />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-2">
+                                    {p.status === "pending" && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updatePublicationStatus(p.id, "active")}
+                                        >
+                                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updatePublicationStatus(p.id, "inactive")}
+                                        >
+                                          <XCircle className="w-4 h-4 text-rose-600" />
+                                        </Button>
+                                      </>
+                                    )}
+                                    <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => deletePublication(p.id)}>
+                                      <Trash2 className="w-4 h-4 text-rose-600" />
+                                    </Button>
+                                    {p.images?.[0] && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.open(p.images[0], "_blank")}
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -566,72 +547,74 @@ export default function SuperAdminPanel() {
                 ) : (
                   <div className="rounded-lg border border-slate-200 overflow-hidden">
                     <div className="max-h-[60vh] overflow-auto">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-white z-10">
-                          <TableRow>
-                            <TableHead>Nombre</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Teléfono</TableHead>{" "}
-                            {/* 👈 nuevo campo */}
-                            <TableHead>Rol</TableHead>
-                            <TableHead className="w-48">Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-
-                        <TableBody>
-                          {filteredUsers.map((u) => (
-                            <TableRow
-                              key={u.id}
-                              className="hover:bg-slate-50/60"
-                            >
-                              <TableCell className="font-medium">
-                                {u.full_name || "—"}
-                              </TableCell>
-                              <TableCell>{u.email || "—"}</TableCell>
-                              <TableCell>
-                                {u.phone_number || "—"}
-                              </TableCell>{" "}
-                              {/* 👈 nuevo campo */}
-                              <TableCell>
-                                <RoleBadge role={u.role_type} />
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {u.role_type === "admin" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setRole(u.id, "usuario")}
-                                    >
-                                      Quitar Admin
-                                    </Button>
-                                  )}
-                                  {(!u.role_type ||
-                                    u.role_type === "usuario") && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setRole(u.id, "admin")}
-                                    >
-                                      Hacer Admin
-                                    </Button>
-                                  )}
-                                  {u.role_type === "superadmin" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      disabled
-                                      title="No se puede modificar a superadmin"
-                                    >
-                                      SuperAdmin
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[720px] sm:min-w-0">
+                          <TableHeader className="sticky top-0 bg-white z-10">
+                            <TableRow>
+                              <TableHead>Nombre</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
+                              <TableHead>Rol</TableHead>
+                              <TableHead className="w-48">Acciones</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+
+                          <TableBody>
+                            {filteredUsers.map((u) => (
+                              <TableRow key={u.id} className="hover:bg-slate-50/60">
+                                <TableCell className="font-medium">
+                                  <span className="truncate block max-w-[220px]" title={u.full_name || "—"}>
+                                    {u.full_name || "—"}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="truncate block max-w-[260px]" title={u.email || "—"}>
+                                    {u.email || "—"}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  {u.phone_number || "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <RoleBadge role={u.role_type} />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-2">
+                                    {u.role_type === "admin" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setRole(u.id, "usuario")}
+                                      >
+                                        Quitar Admin
+                                      </Button>
+                                    )}
+                                    {(!u.role_type || u.role_type === "usuario") && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setRole(u.id, "admin")}
+                                      >
+                                        Hacer Admin
+                                      </Button>
+                                    )}
+                                    {u.role_type === "superadmin" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled
+                                        title="No se puede modificar a superadmin"
+                                      >
+                                        SuperAdmin
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -655,66 +638,61 @@ export default function SuperAdminPanel() {
                 ) : (
                   <div className="rounded-lg border border-slate-200 overflow-hidden">
                     <div className="max-h-[60vh] overflow-auto">
-                      <Table>
-                        <TableHeader className="sticky top-0 bg-white z-10">
-                          <TableRow>
-                            <TableHead>Usuario</TableHead>
-                            <TableHead>Monto</TableHead>
-                            <TableHead>Inicio</TableHead>
-                            <TableHead>Vencimiento</TableHead>
-                            <TableHead>Estado</TableHead>
-                            <TableHead className="w-40">Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {subscriptions.map((s) => (
-                            <TableRow
-                              key={s.id}
-                              className="hover:bg-slate-50/60"
-                            >
-                              <TableCell>{s.user_email || "—"}</TableCell>
-                              <TableCell className="font-medium">
-                                ${Number(s.amount || 0).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                {fmtDate(s.start_date)}
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                {fmtDate(s.end_date)}
-                              </TableCell>
-                              <TableCell>
-                                <StatusBadge status={s.status} />
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {s.status !== "active" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        setSubscriptionStatus(s.id, "active")
-                                      }
-                                    >
-                                      Activar
-                                    </Button>
-                                  )}
-                                  {s.status === "active" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        setSubscriptionStatus(s.id, "inactive")
-                                      }
-                                    >
-                                      Inactivar
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[720px] sm:min-w-0">
+                          <TableHeader className="sticky top-0 bg-white z-10">
+                            <TableRow>
+                              <TableHead>Usuario</TableHead>
+                              <TableHead>Monto</TableHead>
+                              <TableHead className="hidden sm:table-cell">Inicio</TableHead>
+                              <TableHead className="hidden sm:table-cell">Vencimiento</TableHead>
+                              <TableHead>Estado</TableHead>
+                              <TableHead className="w-40">Acciones</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {subscriptions.map((s) => (
+                              <TableRow key={s.id} className="hover:bg-slate-50/60">
+                                <TableCell>{s.user_email || "—"}</TableCell>
+                                <TableCell className="font-medium">
+                                  ${Number(s.amount || 0).toLocaleString()}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-sm">
+                                  {fmtDate(s.start_date)}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-sm">
+                                  {fmtDate(s.end_date)}
+                                </TableCell>
+                                <TableCell>
+                                  <StatusBadge status={s.status} />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    {s.status !== "active" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setSubscriptionStatus(s.id, "active")}
+                                      >
+                                        Activar
+                                      </Button>
+                                    )}
+                                    {s.status === "active" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setSubscriptionStatus(s.id, "inactive")}
+                                      >
+                                        Inactivar
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -726,7 +704,7 @@ export default function SuperAdminPanel() {
 
       {/* Dialogo Editar Publicación */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="sm:max-w-xl w-[92vw] sm:w-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Editar Publicación</DialogTitle>
           </DialogHeader>
@@ -734,6 +712,7 @@ export default function SuperAdminPanel() {
             <div>
               <label className="text-sm font-medium">Título</label>
               <Input
+                className="min-w-0"
                 value={editForm.title}
                 onChange={(e) =>
                   setEditForm({ ...editForm, title: e.target.value })
@@ -744,6 +723,7 @@ export default function SuperAdminPanel() {
             <div>
               <label className="text-sm font-medium">Descripción</label>
               <Textarea
+                className="min-w-0"
                 rows={4}
                 value={editForm.description}
                 onChange={(e) =>
@@ -776,6 +756,7 @@ export default function SuperAdminPanel() {
               <div className="md:col-span-1">
                 <label className="text-sm font-medium">Precio</label>
                 <Input
+                  className="min-w-0"
                   type="number"
                   value={editForm.price ?? ""}
                   onChange={(e) =>
