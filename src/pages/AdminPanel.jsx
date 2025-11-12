@@ -43,11 +43,11 @@ import {
 import { toast } from "sonner";
 import { uploadToCloudinary } from "@/lib/uploadImage";
 
-// === helpers
+// helpers
 const hasPriceCategory = (cat) => ["alquiler", "venta"].includes(String(cat));
 const isEmpleo = (cat) => String(cat) === "empleo";
 
-// === util fecha (evita Invalid Date)
+// fecha segura
 const fmtDate = (v) => {
   if (!v) return "—";
   if (v?.toDate) return v.toDate().toLocaleDateString();
@@ -56,12 +56,23 @@ const fmtDate = (v) => {
   return isNaN(d) ? "—" : d.toLocaleDateString();
 };
 
-/* ================= MapSearchDialog (con embed OSM) ================= */
+// precio con sufijo
+const prettyPrice = (p) => {
+  if (typeof p?.price !== "number") return null;
+  const formatted = p.price.toLocaleString("es-AR");
+  if (p.category === "alquiler") {
+    const modo = p.rent_type === "diario" ? "/día" : "/mes";
+    return `$ ${formatted}${modo}`;
+  }
+  return `$ ${formatted}`;
+};
+
+/* ================= MapSearchDialog ================= */
 function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
   const [q, setQ] = useState(defaultQuery);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
-  const [picked, setPicked] = useState(null); // {display_name, lat, lon, place_id}
+  const [picked, setPicked] = useState(null); // {display_name, lat, lon, place_id, address?}
   const [geoBusy, setGeoBusy] = useState(false);
 
   useEffect(() => {
@@ -71,7 +82,7 @@ function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
     setPicked(null);
   }, [open, defaultQuery]);
 
-  // Buscar (debounced) + autopreview del primer resultado
+  // buscar con debounce
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -88,53 +99,91 @@ function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
         const data = await res.json();
         const arr = Array.isArray(data) ? data : [];
         setResults(arr);
-        if (!picked && arr[0]) setPicked(arr[0]); // autopreview
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
+        if (!picked && arr[0]) setPicked(arr[0]);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
     }, 350);
     return () => { clearTimeout(t); controller.abort(); };
-  }, [q, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, open]); // eslint-disable-line
 
-  const handleUseMyLocation = async () => {
-    if (!navigator.geolocation) {
-      toast.error("Tu navegador no permite geolocalización");
-      return;
-    }
-    setGeoBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const { latitude: lat, longitude: lon } = pos.coords;
-          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-          const res = await fetch(url, { headers: { "Accept-Language": "es-AR,es;q=0.9" } });
-          const data = await res.json();
-          const display_name = data?.display_name || `(${lat.toFixed(5)}, ${lon.toFixed(5)})`;
-          const pkt = { place_id: `me-${lat}-${lon}`, lat, lon, display_name };
-          setPicked(pkt);
-          if (!q) setQ(display_name);
-        } catch {
-          toast.error("No se pudo obtener la dirección");
-        } finally {
-          setGeoBusy(false);
-        }
-      },
-      () => {
-        toast.error("No pudimos tomar tu ubicación");
+  // Reemplazá solo esta función dentro de MapSearchDialog
+const handleUseMyLocation = async () => {
+  if (!navigator.geolocation) {
+    toast.error("Tu navegador no permite geolocalización");
+    return;
+  }
+  setGeoBusy(true);
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+        const res = await fetch(url, { headers: { "Accept-Language": "es-AR,es;q=0.9" } });
+        const data = await res.json();
+
+        // Armar dirección corta (calle/altura, barrio, ciudad)
+        const a = data?.address || {};
+        const street = [a.road, a.pedestrian, a.footway, a.path, a.cycleway].find(Boolean);
+        const number = a.house_number ? `${a.house_number} ` : "";
+        const area = a.neighbourhood || a.suburb || a.quarter || a.city_district;
+        const city = a.city || a.town || a.village || a.municipality;
+        const pieces = [];
+        if (street) pieces.push(`${number}${street}`);
+        if (area && area !== city) pieces.push(area);
+        if (city) pieces.push(city);
+        const short = pieces.length
+          ? pieces.join(", ")
+          : (data?.display_name || "").split(",").slice(0, 3).join(", ");
+
+        const full = data?.display_name || short;
+
+        // Refrescar vista del diálogo
+        setPicked({ place_id: `me-${lat}-${lon}`, lat, lon, display_name: full, address: data?.address });
+        setQ(short);
+
+        // >>> Auto-aplicar al formulario principal y cerrar <<<
+        onSelect({
+          address: short,
+          full_address: full,
+          lat: parseFloat(lat),
+          lon: parseFloat(lon),
+        });
+        onOpenChange(false);
+        toast.success("Ubicación seleccionada");
+      } catch {
+        toast.error("No se pudo obtener la dirección");
+      } finally {
         setGeoBusy(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-    );
+      }
+    },
+    () => { toast.error("No pudimos tomar tu ubicación"); setGeoBusy(false); },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+};
+
+
+  // address corta
+  const shortAddress = (item) => {
+    const a = item?.address || {};
+    const street = [a.road, a.pedestrian, a.footway, a.path, a.cycleway].find(Boolean);
+    const number = a.house_number ? `${a.house_number} ` : "";
+    const area = a.neighbourhood || a.suburb || a.quarter || a.city_district;
+    const city = a.city || a.town || a.village || a.municipality;
+    const pieces = [];
+    if (street) pieces.push(`${number}${street}`);
+    if (area && area !== city) pieces.push(area);
+    if (city) pieces.push(city);
+    return pieces.length
+      ? pieces.join(", ")
+      : (item.display_name || "").split(",").slice(0, 3).join(", ");
   };
 
-  // URLs para embed y para abrir grande
+  // iframe OSM + link grande
   const previewSrc = picked
     ? (() => {
         const lat = parseFloat(picked.lat);
         const lon = parseFloat(picked.lon);
-        const d = 0.01; // “zoom” aprox (más chico => más zoom)
+        const d = 0.01;
         const bbox = [
           (lon - d).toFixed(6),
           (lat - d).toFixed(6),
@@ -149,138 +198,107 @@ function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
     ? `https://www.openstreetmap.org/?mlat=${parseFloat(picked.lat)}&mlon=${parseFloat(picked.lon)}#map=16/${parseFloat(picked.lat)}/${parseFloat(picked.lon)}`
     : null;
 
-    // === dentro de MapSearchDialog, arriba del return ===
-const shortAddress = (item) => {
-  const a = item?.address || {};
-  const street = [a.road, a.pedestrian, a.footway, a.path, a.cycleway].find(Boolean);
-  const number = a.house_number ? `${a.house_number} ` : "";
-  const area = a.neighbourhood || a.suburb || a.quarter || a.city_district;
-  const city = a.city || a.town || a.village || a.municipality;
-  const pieces = [];
-  if (street) pieces.push(`${number}${street}`);
-  if (area && area !== city) pieces.push(area);
-  if (city) pieces.push(city);
-  return pieces.length ? pieces.join(", ") : (item.display_name || "").split(",").slice(0,3).join(", ");
-};
-
-
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Buscar ubicación</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Escribí una dirección (ej: Av. Misiones 123, Puerto Iguazú)"
-              autoFocus
-            />
-            <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => { setQ(defaultQuery || ""); setResults([]); setPicked(null); }}
-            title="Limpiar búsqueda"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-          <Button type="button" variant="secondary" onClick={handleUseMyLocation} disabled={geoBusy}>
-            {geoBusy ? "Ubicando..." : (
-              <span className="inline-flex items-center gap-2">
-                <LocateFixed className="w-4 h-4" /> Mi ubicación
-              </span>
-            )}
-          </Button>
+      <DialogContent className="max-w-3xl p-0 overflow-hidden rounded-2xl shadow-2xl">
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4">
+          <DialogHeader className="p-0">
+            <DialogTitle className="text-lg font-semibold">Buscar ubicación</DialogTitle>
+          </DialogHeader>
+          <p className="text-white/80 text-xs mt-1">Escribí una dirección o usá tu ubicación actual</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Lista de resultados */}
-          <div className="max-h-72 overflow-auto rounded-lg border">
-            {loading ? (
-              <div className="p-4 text-sm text-slate-500">Buscando…</div>
-            ) : results.length === 0 ? (
-              <div className="p-4 text-sm text-slate-500">
-                Escribí una dirección o tocá <span className="font-medium">“Mi ubicación”</span>.
-              </div>
-            ) : (
-              <ul className="divide-y">
-                {results.map((r) => (
-                  <li
-                    key={r.place_id}
-                    className={`p-3 cursor-pointer hover:bg-slate-50 ${picked?.place_id === r.place_id ? "bg-purple-50" : ""}`}
-                    onClick={() => setPicked(r)}
-                  >
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 mt-0.5 text-slate-500" />
-                      <div>
-                        <div className="text-sm font-medium">
-                          {r.display_name?.split(",").slice(0, 3).join(", ")}
-                        </div>
-                        <div className="text-xs text-slate-500">{r.display_name}</div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+        <div className="p-5 space-y-4">
+          {/* Búsqueda */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Av. Misiones 123, Puerto Iguazú…"
+                className="pl-10 rounded-full shadow-sm"
+                autoFocus
+              />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+            <Button type="button" variant="outline" onClick={() => { setQ(defaultQuery || ""); setResults([]); setPicked(null); }} title="Limpiar" className="rounded-full">
+              <X className="w-4 h-4" />
+            </Button>
+            <Button type="button" variant="secondary" onClick={handleUseMyLocation} disabled={geoBusy} className="rounded-full">
+              {geoBusy ? "Ubicando…" : <span className="inline-flex items-center gap-2"><LocateFixed className="w-4 h-4" /> Mi ubicación</span>}
+            </Button>
           </div>
 
-          {/* Preview (iframe OSM) */}
-          <div className="rounded-lg border overflow-hidden bg-white">
-            {previewSrc ? (
-              <div className="flex flex-col">
-                <iframe
-                  title="Mapa"
-                  src={previewSrc}
-                  className="w-full h-[300px] border-0"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-                <div className="p-2 text-right">
-                  <a
-                    href={bigMapHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-purple-700 hover:underline"
-                  >
-                    Abrir mapa grande
-                  </a>
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Lista resultados */}
+            <div className="max-h-72 overflow-auto rounded-2xl border bg-white/70 backdrop-blur">
+              {loading ? (
+                <div className="p-4 text-sm text-slate-500">Buscando…</div>
+              ) : results.length === 0 ? (
+                <div className="p-4 text-sm text-slate-500">
+                  Escribí una dirección o tocá <span className="font-medium">“Mi ubicación”</span>.
                 </div>
-              </div>
-            ) : (
-              <div className="p-6 text-center text-slate-600 text-sm leading-relaxed">
-                El mapa se mostrará acá cuando elijas una dirección o uses <span className="font-medium">“Mi ubicación”</span>.
-              </div>
-            )}
+              ) : (
+                <ul className="divide-y">
+                  {results.map((r) => (
+                    <li
+                      key={r.place_id}
+                      className={`p-3 cursor-pointer transition-colors hover:bg-purple-50/70 ${picked?.place_id === r.place_id ? "bg-purple-50 ring-1 ring-purple-200" : ""}`}
+                      onClick={() => setPicked(r)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-4 h-4 mt-0.5 text-purple-600 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium line-clamp-1">
+                            {r.display_name?.split(",").slice(0, 3).join(", ")}
+                          </div>
+                          <div className="text-xs text-slate-500 line-clamp-2">{r.display_name}</div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Preview */}
+            <div className="rounded-2xl border overflow-hidden bg-white/70 backdrop-blur">
+              {previewSrc ? (
+                <div className="flex flex-col">
+                  <iframe title="Mapa" src={previewSrc} className="w-full aspect-[2/1] border-0" loading="lazy" />
+                  <div className="px-3 py-2 text-right">
+                    <a href={bigMapHref} target="_blank" rel="noreferrer" className="text-xs text-purple-700 hover:underline">
+                      Abrir mapa grande
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 text-center text-slate-600 text-sm leading-relaxed">
+                  El mapa se mostrará acá cuando elijas una dirección o uses <span className="font-medium">“Mi ubicación”</span>.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button
-  disabled={!picked}
-  onClick={() => {
-    if (!picked) return;
-    onSelect({
-      address: shortAddress(picked),              // <— corta y legible
-      full_address: picked.display_name || null,  // <— opcional: completa
-      lat: parseFloat(picked.lat),
-      lon: parseFloat(picked.lon),
-    });
-    onOpenChange(false);
-  }}
-  className="inline-flex items-center gap-2"
->
-  <Check className="w-4 h-4" />
-  Usar esta ubicación
-</Button>
-
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" className="rounded-full" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button
+              disabled={!picked}
+              onClick={() => {
+                if (!picked) return;
+                onSelect({
+                  address: shortAddress(picked),
+                  full_address: picked.display_name || null,
+                  lat: parseFloat(picked.lat),
+                  lon: parseFloat(picked.lon),
+                });
+                onOpenChange(false);
+              }}
+              className="rounded-full"
+            >
+              <Check className="w-4 h-4 mr-1" /> Usar esta ubicación
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -310,11 +328,10 @@ export default function AdminPanel() {
     category: "empleo",
     price: "",
     location: "",
+    location_full: "",
     contact_phone: "",
     contact_email: "",
     status: "pending",
-
-    // geoloc opcional
     geo_lat: null,
     geo_lon: null,
 
@@ -332,7 +349,7 @@ export default function AdminPanel() {
     furnished: "no",
     expenses_included: "no",
 
-    // NUEVO: comodidades (alquiler)
+    // Comodidades
     wifi: "no",
     parking: "no",
     pets: "no",
@@ -354,14 +371,12 @@ export default function AdminPanel() {
     delivery: "no",
   });
 
-  // dialogo para mapa
   const [mapOpen, setMapOpen] = useState(false);
 
-  // Abre el diálogo si llega ?new=1&category=...
+  // abrir modal por query
   useEffect(() => {
     const newFlag = searchParams.get("new");
     const cat = (searchParams.get("category") || "").toLowerCase();
-
     if (newFlag === "1") {
       setEditing(null);
       setForm((prev) => ({
@@ -373,14 +388,14 @@ export default function AdminPanel() {
     }
   }, [searchParams]);
 
-  // Si cambia a empleo, recortar imágenes a 1
+  // forzar 1 imagen en empleo
   useEffect(() => {
     if (isEmpleo(form.category) && imageFiles.length > 1) {
       setImageFiles((prev) => (prev.length ? [prev[0]] : []));
     }
   }, [form.category, imageFiles.length]);
 
-  // Auth + rol + cargas iniciales
+  // auth + carga
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
@@ -389,7 +404,6 @@ export default function AdminPanel() {
         return;
       }
       setUser(u);
-
       try {
         const snap = await getDocs(
           query(collection(db, "users"), where("email", "==", u.email))
@@ -397,13 +411,11 @@ export default function AdminPanel() {
         const data = snap.docs[0]?.data() || null;
         setProfile(data);
         const role = data?.role_type || "usuario";
-
         if (role !== "admin" && role !== "superadmin") {
           toast.error("No tenés permisos de Admin");
           window.location.href = "/";
           return;
         }
-
         await Promise.all([loadPublications(u.email), loadSubscription(u.email)]);
       } catch (e) {
         console.error(e);
@@ -414,7 +426,6 @@ export default function AdminPanel() {
     return () => unsub();
   }, []);
 
-  // Lista del usuario (con fallback sin índice)
   const loadPublications = async (email) => {
     try {
       const qPub = query(
@@ -449,7 +460,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Suscripción vigente
   const loadSubscription = async (email) => {
     const qSub = query(
       collection(db, "subscriptions"),
@@ -460,7 +470,6 @@ export default function AdminPanel() {
     setSubscription(snap.docs[0] ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null);
   };
 
-  // Conteo del mes
   const thisMonthCount = useMemo(() => {
     const now = new Date();
     return publications.filter((p) => {
@@ -480,28 +489,22 @@ export default function AdminPanel() {
       category: "empleo",
       price: "",
       location: "",
+      location_full: "",
       contact_phone: "",
       contact_email: "",
       status: "pending",
-
       geo_lat: null,
       geo_lon: null,
-
-      // empleo
       employment_type: "full-time",
       work_mode: "onsite",
       salary_min: "",
       salary_max: "",
       company: "",
-
-      // alquiler
       rent_type: "mensual",
       rooms: "",
       bathrooms: "",
       furnished: "no",
       expenses_included: "no",
-
-      // comodidades
       wifi: "no",
       parking: "no",
       pets: "no",
@@ -509,14 +512,10 @@ export default function AdminPanel() {
       bbq: "no",
       balcon: "no",
       patio: "no",
-
-      // venta
       condition: "nuevo",
       stock: "",
       brand: "",
       model: "",
-
-      // emprendimiento
       website: "",
       instagram: "",
       whatsapp: "",
@@ -526,7 +525,6 @@ export default function AdminPanel() {
     setEditing(null);
   };
 
-  // Subida de imágenes
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -564,7 +562,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Crear / actualizar
   const handleSubmit = async (ev) => {
     ev.preventDefault();
 
@@ -581,12 +578,9 @@ export default function AdminPanel() {
       title: form.title.trim(),
       description: form.description.trim(),
       category: form.category,
-      price:
-        hasPriceCategory(form.category) && form.price !== ""
-          ? Number(form.price)
-          : null,
-      location: form.location || null,          // corta
-  location_full: form.location_full || null,// completa (opcional)
+      price: hasPriceCategory(form.category) && form.price !== "" ? Number(form.price) : null,
+      location: form.location || null,                // corta
+      location_full: form.location_full || null,      // completa
       contact_phone: form.contact_phone || null,
       contact_email: form.contact_email || user.email,
       status: form.status || "pending",
@@ -598,7 +592,6 @@ export default function AdminPanel() {
       updated_date: serverTimestamp(),
     };
 
-    // Campos por categoría
     if (form.category === "empleo") {
       Object.assign(payload, {
         company: form.company || null,
@@ -615,7 +608,6 @@ export default function AdminPanel() {
         bathrooms: form.bathrooms || null,
         furnished: form.furnished,
         expenses_included: form.expenses_included,
-        // comodidades booleanas
         wifi: form.wifi === "si",
         parking: form.parking === "si",
         pets: form.pets === "si",
@@ -667,28 +659,22 @@ export default function AdminPanel() {
       category: p.category || "empleo",
       price: p.price ?? "",
       location: p.location || "",
+      location_full: p.location_full || "",
       contact_phone: p.contact_phone || "",
       contact_email: p.contact_email || "",
       status: p.status || "pending",
-
       geo_lat: p.geo_lat ?? null,
       geo_lon: p.geo_lon ?? null,
-
-      // empleo
       company: p.company || "",
       employment_type: p.employment_type || "full-time",
       work_mode: p.work_mode || "onsite",
       salary_min: p.salary_min ?? "",
       salary_max: p.salary_max ?? "",
-
-      // alquiler
       rent_type: p.rent_type || "mensual",
       rooms: p.rooms ?? "",
       bathrooms: p.bathrooms ?? "",
       furnished: p.furnished || "no",
       expenses_included: p.expenses_included || "no",
-
-      // comodidades (desde boolean a "si"/"no")
       wifi: p.wifi ? "si" : "no",
       parking: p.parking ? "si" : "no",
       pets: p.pets ? "si" : "no",
@@ -696,26 +682,16 @@ export default function AdminPanel() {
       bbq: p.bbq ? "si" : "no",
       balcon: p.balcon ? "si" : "no",
       patio: p.patio ? "si" : "no",
-
-      // venta
       condition: p.condition || "nuevo",
       stock: p.stock ?? "",
       brand: p.brand || "",
       model: p.model || "",
-
-      // emprendimiento
       website: p.website || "",
       instagram: p.instagram || "",
       whatsapp: p.whatsapp || "",
       delivery: p.delivery || "no",
     });
-    setImageFiles(
-      Array.isArray(p.images)
-        ? isEmpleo(p.category)
-          ? [p.images[0]]
-          : p.images
-        : []
-    );
+    setImageFiles(Array.isArray(p.images) ? (isEmpleo(p.category) ? [p.images[0]] : p.images) : []);
     setDialogOpen(true);
   };
 
@@ -739,7 +715,6 @@ export default function AdminPanel() {
     );
   }
 
-  // UI helper: chip toggle "si/no"
   const ToggleChip = ({ value, onChange, icon: Icon, label }) => (
     <button
       type="button"
@@ -767,51 +742,33 @@ export default function AdminPanel() {
             </div>
             <div>
               <div className="flex items-center gap-2 text-sm text-white/80">
-                <span>Inicio</span>
-                <span>›</span>
-                <span className="text-white">Admin</span>
+                <span>Inicio</span><span>›</span><span className="text-white">Admin</span>
               </div>
               <h1 className="text-2xl md:text-3xl font-bold">Panel de Admin</h1>
-              <p className="text-white/80 text-sm">
-                Gestioná tus publicaciones y tu plan
-              </p>
+              <p className="text-white/80 text-sm">Gestioná tus publicaciones y tu plan</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Contenido */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
-        {/* Estado de suscripción */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-2">
+        {/* Suscripción */}
         <Card className="mb-8 bg-white/80 backdrop-blur shadow-md rounded-2xl">
           <CardContent className="p-5 md:p-6">
             <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
               <div className="min-w-[240px]">
-                <h3 className="font-semibold text-lg mb-2">
-                  Estado de Suscripción
-                </h3>
-
+                <h3 className="font-semibold text-lg mb-2">Estado de Suscripción</h3>
                 {subscription?.status === "active" ? (
                   <div className="space-y-1">
-                    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-600 text-white shadow">
-                      🟢 Activa
-                    </span>
-                    <p className="text-sm text-slate-700 mt-1">
-                      Publicaciones este mes:{" "}
-                      <strong>{thisMonthCount}/3</strong>
-                    </p>
-                    <p className="text-sm text-slate-700">
-                      Vence: {fmtDate(subscription?.end_date)}
-                    </p>
+                    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-600 text-white shadow">🟢 Activa</span>
+                    <p className="text-sm text-slate-700 mt-1">Publicaciones este mes: <strong>{thisMonthCount}/3</strong></p>
+                    <p className="text-sm text-slate-700">Vence: {fmtDate(subscription?.end_date)}</p>
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-red-600 text-white shadow">
-                      🔴 Inactiva
-                    </span>
-                    <p className="text-sm text-slate-700 mt-1">
-                      Necesitás activar tu suscripción para publicar.
-                    </p>
+                    <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-red-600 text-white shadow">🔴 Inactiva</span>
+                    <p className="text-sm text-slate-700 mt-1">Necesitás activar tu suscripción para publicar.</p>
                   </div>
                 )}
               </div>
@@ -819,24 +776,15 @@ export default function AdminPanel() {
               <div className="shrink-0">
                 <Dialog
                   open={dialogOpen}
-                  onOpenChange={(open) => {
-                    setDialogOpen(open);
-                    if (!open) resetForm();
-                  }}
+                  onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}
                 >
                   <DialogTrigger asChild>
                     <div>
                       <Button
-                        className={`rounded-xl font-semibold px-5 py-2 text-white shadow-md hover:shadow-lg transition-all border-none focus:outline-none focus:ring-0 ${
-                          subscription?.status === "active"
-                            ? "bg-green-600 hover:bg-green-700"
-                            : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
+                        className={`rounded-full font-semibold px-5 py-2 text-white shadow-md hover:shadow-lg transition-all border-none focus:outline-none focus:ring-0 ${
+                          subscription?.status === "active" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
                         }`}
-                        disabled={
-                          subscription?.status === "active"
-                            ? thisMonthCount >= 3
-                            : true
-                        }
+                        disabled={subscription?.status === "active" ? thisMonthCount >= 3 : true}
                         onClick={(e) => {
                           if (subscription?.status !== "active") {
                             e.preventDefault();
@@ -845,40 +793,26 @@ export default function AdminPanel() {
                         }}
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        {subscription?.status === "active"
-                          ? "Nueva Publicación"
-                          : "Suscripción Inactiva"}
+                        {subscription?.status === "active" ? "Nueva Publicación" : "Suscripción Inactiva"}
                       </Button>
                     </div>
                   </DialogTrigger>
 
+                  {/* Formulario */}
                   <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>
-                        {editing ? "Editar Publicación" : "Nueva Publicación"}
-                      </DialogTitle>
+                      <DialogTitle>{editing ? "Editar Publicación" : "Nueva Publicación"}</DialogTitle>
                     </DialogHeader>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                       <div>
                         <Label htmlFor="title">Título *</Label>
-                        <Input
-                          id="title"
-                          value={form.title}
-                          onChange={(e) => setForm({ ...form, title: e.target.value })}
-                          required
-                        />
+                        <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
                       </div>
 
                       <div>
                         <Label htmlFor="description">Descripción *</Label>
-                        <Textarea
-                          id="description"
-                          rows={4}
-                          value={form.description}
-                          onChange={(e) => setForm({ ...form, description: e.target.value })}
-                          required
-                        />
+                        <Textarea id="description" rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -894,9 +828,7 @@ export default function AdminPanel() {
                               }))
                             }
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Elegí categoría" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Elegí categoría" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="empleo">Empleo</SelectItem>
                               <SelectItem value="alquiler">Alquiler</SelectItem>
@@ -910,9 +842,7 @@ export default function AdminPanel() {
                           <div>
                             <Label htmlFor="price">Precio (opcional)</Label>
                             <Input
-                              id="price"
-                              type="number"
-                              value={form.price}
+                              id="price" type="number" value={form.price}
                               onChange={(e) => setForm({ ...form, price: e.target.value })}
                               placeholder={form.category === "alquiler" ? "Ej: 250000 (AR$ por mes/día)" : "Ej: 450000"}
                               min={0}
@@ -921,62 +851,44 @@ export default function AdminPanel() {
                         )}
                       </div>
 
-                      {/* Ubicación + mapa */}
+                      {/* Ubicación */}
                       <div>
                         <Label htmlFor="location">Ubicación</Label>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                           <Input
                             id="location"
                             value={form.location}
                             onChange={(e) => setForm({ ...form, location: e.target.value })}
                             placeholder="Dirección, barrio o ciudad"
+                            className="truncate"
+                            title={form.location_full || form.location}
                           />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="inline-flex items-center gap-2"
-                            onClick={() => setMapOpen(true)}
-                            title="Buscar en mapa"
-                          >
-                            <LocateFixed className="w-4 h-4" />
-                            Mapa
+                          <Button type="button" variant="outline" className="inline-flex items-center gap-2 rounded-full" onClick={() => setMapOpen(true)} title="Buscar en mapa">
+                            <LocateFixed className="w-4 h-4" /> Mapa
                           </Button>
                         </div>
                         {(form.geo_lat != null && form.geo_lon != null) && (
                           <div className="mt-1 text-xs text-slate-600">
-                            Coordenadas: {form.geo_lat.toFixed(6)}, {form.geo_lon.toFixed(6)}{" "}
-                            ·{" "}
-                            <a
-                              className="underline"
-                              href={`https://www.google.com/maps/search/?api=1&query=${form.geo_lat},${form.geo_lon}`}
-                              target="_blank" rel="noreferrer"
-                            >
+                            Coordenadas: {form.geo_lat.toFixed(6)}, {form.geo_lon.toFixed(6)} ·{" "}
+                            <a className="underline" href={`https://www.google.com/maps/search/?api=1&query=${form.geo_lat},${form.geo_lon}`} target="_blank" rel="noreferrer">
                               Ver en Maps
                             </a>
                           </div>
                         )}
                       </div>
 
-                      {/* ===== Campos dinámicos por categoría ===== */}
+                      {/* Por categoría */}
                       {form.category === "empleo" && (
                         <div className="rounded-lg border p-4 space-y-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label>Empresa</Label>
-                              <Input
-                                value={form.company}
-                                onChange={(e) => setForm({ ...form, company: e.target.value })}
-                              />
+                              <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                             </div>
                             <div>
                               <Label>Modalidad</Label>
-                              <Select
-                                value={form.work_mode}
-                                onValueChange={(v) => setForm({ ...form, work_mode: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={form.work_mode} onValueChange={(v) => setForm({ ...form, work_mode: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="onsite">Presencial</SelectItem>
                                   <SelectItem value="hybrid">Híbrido</SelectItem>
@@ -986,13 +898,8 @@ export default function AdminPanel() {
                             </div>
                             <div>
                               <Label>Tipo de puesto</Label>
-                              <Select
-                                value={form.employment_type}
-                                onValueChange={(v) => setForm({ ...form, employment_type: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={form.employment_type} onValueChange={(v) => setForm({ ...form, employment_type: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="full-time">Full-time</SelectItem>
                                   <SelectItem value="part-time">Part-time</SelectItem>
@@ -1004,19 +911,11 @@ export default function AdminPanel() {
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <Label>Salario mínimo</Label>
-                                <Input
-                                  type="number"
-                                  value={form.salary_min}
-                                  onChange={(e) => setForm({ ...form, salary_min: e.target.value })}
-                                />
+                                <Input type="number" value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} />
                               </div>
                               <div>
                                 <Label>Salario máximo</Label>
-                                <Input
-                                  type="number"
-                                  value={form.salary_max}
-                                  onChange={(e) => setForm({ ...form, salary_max: e.target.value })}
-                                />
+                                <Input type="number" value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} />
                               </div>
                             </div>
                           </div>
@@ -1028,13 +927,8 @@ export default function AdminPanel() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label>Tipo de alquiler</Label>
-                              <Select
-                                value={form.rent_type}
-                                onValueChange={(v) => setForm({ ...form, rent_type: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={form.rent_type} onValueChange={(v) => setForm({ ...form, rent_type: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="diario">Por día</SelectItem>
                                   <SelectItem value="mensual">Por mes</SelectItem>
@@ -1043,28 +937,17 @@ export default function AdminPanel() {
                             </div>
                             <div>
                               <Label>Ambientes/Dormitorios</Label>
-                              <Input
-                                value={form.rooms}
-                                onChange={(e) => setForm({ ...form, rooms: e.target.value })}
-                              />
+                              <Input value={form.rooms} onChange={(e) => setForm({ ...form, rooms: e.target.value })} />
                             </div>
                             <div>
                               <Label>Baños</Label>
-                              <Input
-                                value={form.bathrooms}
-                                onChange={(e) => setForm({ ...form, bathrooms: e.target.value })}
-                              />
+                              <Input value={form.bathrooms} onChange={(e) => setForm({ ...form, bathrooms: e.target.value })} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <Label>Amoblado</Label>
-                                <Select
-                                  value={form.furnished}
-                                  onValueChange={(v) => setForm({ ...form, furnished: v })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
+                                <Select value={form.furnished} onValueChange={(v) => setForm({ ...form, furnished: v })}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="no">No</SelectItem>
                                     <SelectItem value="si">Sí</SelectItem>
@@ -1073,13 +956,8 @@ export default function AdminPanel() {
                               </div>
                               <div>
                                 <Label>Servicios incluidos</Label>
-                                <Select
-                                  value={form.expenses_included}
-                                  onValueChange={(v) => setForm({ ...form, expenses_included: v })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
+                                <Select value={form.expenses_included} onValueChange={(v) => setForm({ ...form, expenses_included: v })}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="no">No</SelectItem>
                                     <SelectItem value="si">Sí</SelectItem>
@@ -1089,7 +967,6 @@ export default function AdminPanel() {
                             </div>
                           </div>
 
-                          {/* Comodidades */}
                           <div className="pt-2">
                             <Label className="mb-2 block">Comodidades</Label>
                             <div className="flex flex-wrap gap-2">
@@ -1110,13 +987,8 @@ export default function AdminPanel() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label>Condición</Label>
-                              <Select
-                                value={form.condition}
-                                onValueChange={(v) => setForm({ ...form, condition: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={form.condition} onValueChange={(v) => setForm({ ...form, condition: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="nuevo">Nuevo</SelectItem>
                                   <SelectItem value="usado">Usado</SelectItem>
@@ -1125,25 +997,15 @@ export default function AdminPanel() {
                             </div>
                             <div>
                               <Label>Stock</Label>
-                              <Input
-                                type="number"
-                                value={form.stock}
-                                onChange={(e) => setForm({ ...form, stock: e.target.value })}
-                              />
+                              <Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
                             </div>
                             <div>
                               <Label>Marca</Label>
-                              <Input
-                                value={form.brand}
-                                onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                              />
+                              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
                             </div>
                             <div>
                               <Label>Modelo</Label>
-                              <Input
-                                value={form.model}
-                                onChange={(e) => setForm({ ...form, model: e.target.value })}
-                              />
+                              <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
                             </div>
                           </div>
                         </div>
@@ -1154,38 +1016,20 @@ export default function AdminPanel() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label>Sitio web</Label>
-                              <Input
-                                type="url"
-                                placeholder="https://..."
-                                value={form.website}
-                                onChange={(e) => setForm({ ...form, website: e.target.value })}
-                              />
+                              <Input type="url" placeholder="https://..." value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
                             </div>
                             <div>
                               <Label>Instagram</Label>
-                              <Input
-                                placeholder="@usuario"
-                                value={form.instagram}
-                                onChange={(e) => setForm({ ...form, instagram: e.target.value })}
-                              />
+                              <Input placeholder="@usuario" value={form.instagram} onChange={(e) => setForm({ ...form, instagram: e.target.value })} />
                             </div>
                             <div>
                               <Label>WhatsApp</Label>
-                              <Input
-                                placeholder="+54 9 ..."
-                                value={form.whatsapp}
-                                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                              />
+                              <Input placeholder="+54 9 ..." value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
                             </div>
                             <div>
                               <Label>Delivery</Label>
-                              <Select
-                                value={form.delivery}
-                                onValueChange={(v) => setForm({ ...form, delivery: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={form.delivery} onValueChange={(v) => setForm({ ...form, delivery: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="no">No</SelectItem>
                                   <SelectItem value="si">Sí</SelectItem>
@@ -1199,29 +1043,13 @@ export default function AdminPanel() {
                       {/* Imágenes */}
                       <div>
                         <Label>
-                          Imágenes{" "}
-                          {isEmpleo(form.category) && (
-                            <span className="text-xs text-slate-500">(solo 1 imagen)</span>
-                          )}
+                          Imágenes {isEmpleo(form.category) && <span className="text-xs text-slate-500">(solo 1)</span>}
                         </Label>
                         <div className="mt-2 flex flex-col gap-2">
-                          <input
-                            id="images"
-                            type="file"
-                            accept="image/*"
-                            multiple={!isEmpleo(form.category)}
-                            onChange={handleImageUpload}
-                            className="hidden"
-                          />
+                          <input id="images" type="file" accept="image/*" multiple={!isEmpleo(form.category)} onChange={handleImageUpload} className="hidden" />
                           <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => document.getElementById("images").click()}
-                              disabled={uploading}
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              {uploading ? "Subiendo..." : "Subir"}
+                            <Button type="button" variant="outline" onClick={() => document.getElementById("images").click()} disabled={uploading}>
+                              <Upload className="w-4 h-4 mr-2" /> {uploading ? "Subiendo..." : "Subir"}
                             </Button>
 
                             <input
@@ -1240,11 +1068,7 @@ export default function AdminPanel() {
                             <div className={`grid ${isEmpleo(form.category) ? "grid-cols-1" : "grid-cols-4"} gap-2 mt-3`}>
                               {imageFiles.map((url, idx) => (
                                 <div key={idx} className="relative group">
-                                  <img
-                                    src={url}
-                                    alt={`Preview ${idx}`}
-                                    className={`w-full ${isEmpleo(form.category) ? "h-48" : "h-20"} object-cover rounded-lg`}
-                                  />
+                                  <img src={url} alt={`Preview ${idx}`} className={`w-full ${isEmpleo(form.category) ? "h-48" : "h-20"} object-cover rounded-lg`} />
                                   <button
                                     type="button"
                                     onClick={() => setImageFiles((prev) => prev.filter((_, i) => i !== idx))}
@@ -1261,19 +1085,10 @@ export default function AdminPanel() {
                       </div>
 
                       <div className="flex justify-end gap-3 pt-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setDialogOpen(false);
-                            resetForm();
-                          }}
-                        >
+                        <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
                           Cancelar
                         </Button>
-                        <Button type="submit">
-                          {editing ? "Actualizar" : "Publicar"}
-                        </Button>
+                        <Button type="submit">{editing ? "Actualizar" : "Publicar"}</Button>
                       </div>
                     </form>
                   </DialogContent>
@@ -1283,7 +1098,7 @@ export default function AdminPanel() {
           </CardContent>
         </Card>
 
-        {/* Grilla de publicaciones */}
+        {/* Grilla */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {publications.map((p) => (
             <Card key={p.id} className="hover:shadow-lg transition-all overflow-hidden">
@@ -1296,52 +1111,35 @@ export default function AdminPanel() {
               )}
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-3">
-                  <Badge
-                    className={
-                      p.status === "active"
-                        ? "bg-green-500"
-                        : p.status === "pending"
-                        ? "bg-yellow-500"
-                        : "bg-slate-500"
-                    }
-                  >
+                  <Badge className={p.status === "active" ? "bg-green-600" : p.status === "pending" ? "bg-amber-500" : "bg-slate-500"}>
                     {p.status === "active" ? "Activa" : p.status === "pending" ? "Pendiente" : "Inactiva"}
                   </Badge>
-                  <Badge variant="outline">
-                    {p.category === "empleo"
-                      ? "Empleo"
-                      : p.category === "alquiler"
-                      ? "Alquiler"
-                      : p.category === "venta"
-                      ? "Venta"
-                      : p.category === "emprendimiento"
-                      ? "Emprendimiento"
-                      : p.category}
+                  <Badge variant="outline" className="border-purple-200 text-purple-700 bg-purple-50">
+                    {p.category === "empleo" ? "Empleo" : p.category === "alquiler" ? "Alquiler" : p.category === "venta" ? "Venta" : "Emprendimiento"}
                   </Badge>
                 </div>
 
                 <h3 className="font-bold text-lg mb-2">{p.title}</h3>
-                {p.description && (
-                  <p className="text-slate-600 text-sm mb-3 line-clamp-2">{p.description}</p>
+
+                {/* Ubicación pill truncada */}
+                {p.location && (
+                  <div className="mt-1 mb-3 inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2 py-1 text-xs max-w-full">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate max-w-[520px]" title={p.location_full || p.location}>{p.location}</span>
+                  </div>
                 )}
 
-                {hasPriceCategory(p.category) && typeof p.price === "number" && (
-                  <p className="text-xl font-bold text-green-600 mb-3">
-                    ${p.price.toLocaleString()}
-                  </p>
+                {p.description && <p className="text-slate-600 text-sm mb-3 line-clamp-2">{p.description}</p>}
+
+                {prettyPrice(p) && (
+                  <p className="text-xl font-extrabold text-purple-700 mb-3">{prettyPrice(p)}</p>
                 )}
 
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEdit(p)}>
-                    <Edit className="w-4 h-4 mr-1" />
-                    Editar
+                    <Edit className="w-4 h-4 mr-1" /> Editar
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 hover:bg-red-50"
-                    onClick={() => handleDelete(p.id)}
-                  >
+                  <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50" onClick={() => handleDelete(p.id)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -1358,23 +1156,22 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Diálogo de mapa (fuera para que no se desmonte) */}
+      {/* Diálogo de mapa */}
       <MapSearchDialog
-  open={mapOpen}
-  onOpenChange={setMapOpen}
-  defaultQuery={form.location}
-  onSelect={({ address, full_address, lat, lon }) => {
-    setForm((prev) => ({
-      ...prev,
-      location: address,              // corta
-      location_full: full_address || address, // completa (nuevo campo en form)
-      geo_lat: lat,
-      geo_lon: lon,
-    }));
-    toast.success("Ubicación seleccionada");
-  }}
-/>
-
+        open={mapOpen}
+        onOpenChange={setMapOpen}
+        defaultQuery={form.location}
+        onSelect={({ address, full_address, lat, lon }) => {
+          setForm((prev) => ({
+            ...prev,
+            location: address,
+            location_full: full_address || address,
+            geo_lat: lat,
+            geo_lon: lon,
+          }));
+          toast.success("Ubicación seleccionada");
+        }}
+      />
     </div>
   );
 }
