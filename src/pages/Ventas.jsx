@@ -36,6 +36,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 // ========= Helper: obtiene ciudad desde location =========
@@ -48,13 +49,19 @@ function getCityFromLocation(location) {
   let loc = location.toString().trim();
 
   // Primero cortamos por coma y nos quedamos con la última parte
-  const commaParts = loc.split(",").map((p) => p.trim()).filter(Boolean);
+  const commaParts = loc
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (commaParts.length > 0) {
     loc = commaParts[commaParts.length - 1];
   }
 
   // Si tiene guión, nos quedamos con la primera parte (antes del barrio)
-  const dashParts = loc.split("-").map((p) => p.trim()).filter(Boolean);
+  const dashParts = loc
+    .split("-")
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (dashParts.length > 0) {
     loc = dashParts[0];
   }
@@ -250,9 +257,7 @@ export default function Ventas() {
   const categories = useMemo(
     () => [
       ...new Set(
-        (publications || [])
-          .map((p) => p.saleCategory?.trim())
-          .filter(Boolean)
+        (publications || []).map((p) => p.saleCategory?.trim()).filter(Boolean)
       ),
     ],
     [publications]
@@ -315,9 +320,7 @@ export default function Ventas() {
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
                 Ventas
               </h1>
-              <p className="text-slate-600">
-                Comprá y vendé lo que necesites
-              </p>
+              <p className="text-slate-600">Comprá y vendé lo que necesites</p>
             </div>
           </div>
 
@@ -338,10 +341,7 @@ export default function Ventas() {
               </div>
 
               {/* Filtro categoría */}
-              <Select
-                value={categoryFilter}
-                onValueChange={setCategoryFilter}
-              >
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="shadow-sm">
                   <Tag className="w-4 h-4 mr-2 text-slate-500" />
                   <SelectValue placeholder="Categoría" />
@@ -357,10 +357,7 @@ export default function Ventas() {
               </Select>
 
               {/* Filtro ubicación (solo ciudades) */}
-              <Select
-                value={locationFilter}
-                onValueChange={setLocationFilter}
-              >
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
                 <SelectTrigger className="shadow-sm">
                   <MapPin className="w-4 h-4 mr-2 text-slate-500" />
                   <SelectValue placeholder="Ubicación" />
@@ -416,11 +413,7 @@ export default function Ventas() {
                 </button>
 
                 {hasAnyFilter && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearAll}
-                  >
+                  <Button variant="ghost" size="sm" onClick={clearAll}>
                     Limpiar todo
                   </Button>
                 )}
@@ -443,11 +436,7 @@ export default function Ventas() {
               <span className="text-sm text-red-500">
                 No se pudo cargar la lista.
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => refetch()}
-              >
+              <Button size="sm" variant="outline" onClick={() => refetch()}>
                 Reintentar
               </Button>
             </div>
@@ -488,9 +477,7 @@ export default function Ventas() {
                     }}
                     disabled={!!favBusy[product.id]}
                     title={
-                      isFav
-                        ? "Quitar de favoritos"
-                        : "Agregar a favoritos"
+                      isFav ? "Quitar de favoritos" : "Agregar a favoritos"
                     }
                     className={`absolute top-3 right-3 z-10 rounded-full bg-white/95 backdrop-blur p-2 border shadow-sm hover:scale-105 transition
                       ${
@@ -551,16 +538,17 @@ export default function Ventas() {
                       <div className="flex items-center text-slate-500 text-xs mb-3">
                         <MapPin className="w-3 h-3 mr-1" />
                         {/* Mostramos la ciudad también acá si querés */}
-                        {getCityFromLocation(product.location) || product.location}
+                        {getCityFromLocation(product.location) ||
+                          product.location}
                       </div>
                     )}
 
                     <Button
+                      asChild
                       size="sm"
                       className="w-full bg-green-600 hover:bg-green-700"
-                      // Más adelante podés hacer un Link a /ventas/:id o abrir un modal
                     >
-                      Ver detalles
+                      <Link to={`/ventas/${product.id}`}>Ver detalles</Link>
                     </Button>
                   </CardContent>
                 </Card>
@@ -574,7 +562,8 @@ export default function Ventas() {
                   No se encontraron productos
                 </p>
                 <p className="text-slate-400 text-sm">
-                  Probá buscar por otra palabra o cambiar la ubicación / categoría.
+                  Probá buscar por otra palabra o cambiar la ubicación /
+                  categoría.
                 </p>
               </div>
             )}

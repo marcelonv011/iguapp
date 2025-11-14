@@ -20,6 +20,7 @@ import AlquilerDetalle from "@/pages/AlquilerDetalle.jsx";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import ScrollToTop from "@/components/ScrollToTop.jsx"; 
 import Ventas from "@/pages/Ventas.jsx";
+import VentaDetails from "@/pages/VentaDetails";
 
 import "./index.css";
 
@@ -47,6 +48,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/alquileres" element={<Alquileres />} />
               <Route path="/alquileres/:id" element={<AlquilerDetalle />} /> {/* 👈 NUEVA */}
               <Route path="/ventas" element={<Ventas />} />
+              <Route path="/ventas/:id" element={<VentaDetails />} />
               <Route path="/emprendimientos" element={<div>Emprendimientos</div>} />
               <Route path="/delivery" element={<div>Delivery</div>} />
               <Route path="/restaurant" element={<div>Restaurant</div>} />
