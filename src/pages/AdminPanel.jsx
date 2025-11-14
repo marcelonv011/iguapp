@@ -1237,6 +1237,41 @@ export default function AdminPanel() {
                           </div>
                         )}
                       </div>
+                      {/* Datos de contacto */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div>
+    <Label htmlFor="contact_phone">Teléfono / WhatsApp *</Label>
+    <Input
+      id="contact_phone"
+      type="tel"
+      placeholder="+54 9 3757 123456"
+      value={form.contact_phone}
+      onChange={(e) =>
+        setForm({ ...form, contact_phone: e.target.value })
+      }
+      required
+    />
+    <p className="text-xs text-slate-500 mt-1">
+      Número que se mostrará en la publicación para llamadas o WhatsApp.
+    </p>
+  </div>
+
+  <div>
+    <Label htmlFor="contact_email">Email de contacto (opcional)</Label>
+    <Input
+      id="contact_email"
+      type="email"
+      placeholder={user?.email || "tu-email@ejemplo.com"}
+      value={form.contact_email}
+      onChange={(e) =>
+        setForm({ ...form, contact_email: e.target.value })
+      }
+    />
+    <p className="text-xs text-slate-500 mt-1">
+      Si lo dejás vacío se usará tu email de cuenta: {user?.email}
+    </p>
+  </div>
+</div>
 
                       {/* Por categoría */}
                       {form.category === "empleo" && (

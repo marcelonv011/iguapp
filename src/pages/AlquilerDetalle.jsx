@@ -39,6 +39,7 @@ import {
   Flame,
   BedDouble,
   Bath,
+  MessageCircle, // 👈 para botón de WhatsApp en mobile
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -77,15 +78,16 @@ const formatARS = (n) =>
     Number(n || 0)
   );
 
+const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
+
 const formatPhone = (s) => {
   const d = onlyDigits(s);
   if (!d) return s || "";
   // Ej: +54 9 3757 123456
-  if (d.startsWith("54")) return `+${d.slice(0,2)} ${d.slice(2,3)} ${d.slice(3,7)} ${d.slice(7)}`;
+  if (d.startsWith("54"))
+    return `+${d.slice(0, 2)} ${d.slice(2, 3)} ${d.slice(3, 7)} ${d.slice(7)}`;
   return s;
 };
-
-const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
 
 // chips visuales para comodidades con ícono
 const yesNo = (v) =>
@@ -322,7 +324,7 @@ export default function AlquilerDetalle() {
   const goPrev = () => setIdx((i) => (i > 0 ? i - 1 : i));
   const goNext = () => setIdx((i) => (i < images.length - 1 ? i + 1 : i));
 
-  // Share + WhatsApp (Maps solo en Contacto)
+  // Share
   const handleShare = async () => {
     try {
       const url = window.location.href;
@@ -401,15 +403,19 @@ export default function AlquilerDetalle() {
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Top actions (sin Maps) */}
-        <div className="mb-6 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => navigate(-1)}
-            className="gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" /> Volver
-          </Button>
+        {/* Top actions */}
+        <div className="flex items-center justify-between rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200 px-3 sm:px-4 py-2.5 shadow-sm mb-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              variant="ghost"
+              className="gap-2 px-2 sm:px-3"
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft className="w-4 h-4" /> Volver
+            </Button>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
+            </div>
+          </div>
 
           <div className="hidden sm:flex items-center gap-2">
             <button
@@ -426,8 +432,8 @@ export default function AlquilerDetalle() {
         {/* Header “glass” */}
         <div className="mb-6 rounded-2xl border border-purple-100 bg-white/70 backdrop-blur p-4 sm:p-5 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge className="bg-purple-100 text-purple-700">
                   Alquiler
                 </Badge>
@@ -448,7 +454,7 @@ export default function AlquilerDetalle() {
                 {alquiler.title || "Alquiler"}
               </h1>
               {(alquiler.address || alquiler.location) && (
-                <div className="inline-flex items-center gap-2 max-w-full">
+                <div className="inline-flex items-center gap-2 max-w-full mt-1.5">
                   <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
                   <span
                     className="text-sm sm:text-base text-slate-700 truncate max-w-[60vw] sm:max-w-[420px]"
@@ -666,107 +672,138 @@ export default function AlquilerDetalle() {
                 )}
 
                 {/* === Contacto (separado) === */}
-{(alquiler.contact_phone || alquiler.contact_email || mapsUrl) && (
-  <section className="p-4 rounded-2xl border bg-gradient-to-br from-slate-50 to-white">
-    <h3 className="font-semibold text-slate-900 mb-3">Contacto</h3>
+                {(alquiler.contact_phone ||
+                  alquiler.contact_email ||
+                  mapsUrl) && (
+                  <section className="p-4 rounded-2xl border bg-gradient-to-br from-slate-50 to-white">
+                    <h3 className="font-semibold text-slate-900 mb-3">
+                      Contacto
+                    </h3>
 
-    <div className="space-y-4">
-      {/* Teléfono */}
-      {alquiler.contact_phone && (
-        <div>
-          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
-            Teléfono
-          </p>
-          <div className="flex items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2 min-w-0">
-              <Phone className="w-4 h-4 text-slate-500 shrink-0" />
-              <span className="text-sm text-slate-800 truncate" title={alquiler.contact_phone}>
-                {formatPhone(alquiler.contact_phone)}
-              </span>
-            </div>
-          </div>
+                    <div className="space-y-4">
+                      {/* Teléfono */}
+                      {alquiler.contact_phone && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                            Teléfono
+                          </p>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="inline-flex items-center gap-2 min-w-0">
+                              <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                              <span
+                                className="text-sm text-slate-800 truncate"
+                                title={alquiler.contact_phone}
+                              >
+                                {formatPhone(alquiler.contact_phone)}
+                              </span>
+                            </div>
+                          </div>
 
-          {/* Botón WhatsApp si hay teléfono */}
-          <div className="mt-2">
-            <a
-              href={`https://wa.me/${onlyDigits(alquiler.contact_phone)}?text=${encodeURIComponent(
-                `Hola, vi tu alquiler "${alquiler?.title}" y me interesa. ¿Sigue disponible?`
-              )}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Button
-                className="w-full sm:w-auto rounded-xl shadow-md hover:shadow-lg transition bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0"
-              >
-                WhatsApp
-              </Button>
-            </a>
-          </div>
-        </div>
-      )}
+                          {/* Botón WhatsApp si hay teléfono */}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {whatsappHref && (
+                              <a
+                                href={whatsappHref}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex-1 min-w-[140px]"
+                              >
+                                <Button className="w-full rounded-xl shadow-md hover:shadow-lg transition bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0">
+                                  <span className="inline-flex items-center gap-2">
+                                    <MessageCircle className="w-4 h-4" />
+                                    WhatsApp
+                                  </span>
+                                </Button>
+                              </a>
+                            )}
+                            <a
+                              href={`tel:${onlyDigits(alquiler.contact_phone)}`}
+                              className="flex-1 min-w-[120px]"
+                            >
+                              <Button
+                                variant="outline"
+                                className="w-full rounded-xl border-slate-300"
+                              >
+                                Llamar
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      )}
 
-      {/* Email */}
-      {alquiler.contact_email && (
-        <div>
-          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
-            Email
-          </p>
-          <div className="flex items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2 min-w-0">
-              <Mail className="w-4 h-4 text-slate-500 shrink-0" />
-              <a
-                href={`mailto:${alquiler.contact_email}`}
-                className="text-sm text-slate-800 underline decoration-dotted truncate"
-                title={alquiler.contact_email}
-              >
-                {alquiler.contact_email}
-              </a>
-            </div>
-            <div className="shrink-0 flex items-center gap-1.5">
-              <button
-                onClick={async () => {
-                  try { await navigator.clipboard.writeText(alquiler.contact_email); toast.success("Email copiado"); } catch {}
-                }}
-                className="text-xs px-2 py-1 rounded-md border bg-white hover:bg-slate-50"
-                title="Copiar"
-              >
-                Copiar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                      {/* Email */}
+                      {alquiler.contact_email && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                            Email
+                          </p>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="inline-flex items-center gap-2 min-w-0">
+                              <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+                              <a
+                                href={`mailto:${alquiler.contact_email}`}
+                                className="text-sm text-slate-800 underline decoration-dotted truncate"
+                                title={alquiler.contact_email}
+                              >
+                                {alquiler.contact_email}
+                              </a>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(
+                                      alquiler.contact_email
+                                    );
+                                    toast.success("Email copiado");
+                                  } catch {}
+                                }}
+                                className="text-xs px-2 py-1 rounded-md border bg-white hover:bg-slate-50"
+                                title="Copiar"
+                              >
+                                Copiar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
-      {/* Dirección */}
-      {alquiler.address && (
-        <div>
-          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
-            Dirección
-          </p>
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
-            <span className="text-sm text-slate-700 truncate" title={alquiler.address}>
-              {alquiler.address}
-            </span>
-          </div>
-          {mapsUrl && (
-            <div className="mt-2">
-              <a href={mapsUrl} target="_blank" rel="noreferrer">
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto rounded-xl border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shadow-sm"
-                >
-                  Ver en Maps
-                </Button>
-              </a>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  </section>
-)}
-
+                      {/* Dirección */}
+                      {alquiler.address && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">
+                            Dirección
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                            <span
+                              className="text-sm text-slate-700 truncate"
+                              title={alquiler.address}
+                            >
+                              {alquiler.address}
+                            </span>
+                          </div>
+                          {mapsUrl && (
+                            <div className="mt-2">
+                              <a
+                                href={mapsUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <Button
+                                  variant="outline"
+                                  className="w-full sm:w-auto rounded-xl border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shadow-sm"
+                                >
+                                  Ver en Maps
+                                </Button>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -863,37 +900,80 @@ export default function AlquilerDetalle() {
         </div>
       </div>
 
-      {/* Barra flotante (mobile) */}
-{(alquiler.price || alquiler.contact_phone || alquiler.contact_email) && (
-  <div className="fixed bottom-0 inset-x-0 z-20 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-lg sm:hidden">
-    <div className="max-w-6xl mx-auto px-4 py-3 grid grid-cols-2 gap-2">
-      {alquiler.contact_phone ? (
-        <>
-        </>
-      ) : null}
+      {/* Barra flotante (mobile) más linda */}
+      {(alquiler.price || alquiler.contact_phone || alquiler.contact_email) && (
+        <div className="fixed bottom-0 inset-x-0 z-20 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 shadow-lg sm:hidden">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+            {alquiler.price && (
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Precio {periodLabel === "mes" ? "mensual" : "por día"}
+                </p>
+                <div className="flex items-center gap-1 text-lg font-bold text-purple-700">
+                  <DollarSign className="w-4 h-4" />
+                  <span className="truncate">
+                    {formatter.format(Number(alquiler.price))}/{periodLabel}
+                  </span>
+                </div>
+              </div>
+            )}
 
-      {(!alquiler.contact_phone && alquiler.contact_email) ? (
-        <>
-          <a href={`mailto:${alquiler.contact_email}`}>
-            <Button className="w-full rounded-lg">Correo</Button>
-          </a>
-          {mapsUrl ? (
-            <a href={mapsUrl} target="_blank" rel="noreferrer">
-              <Button variant="outline" className="w-full rounded-lg">
-                Maps
-              </Button>
-            </a>
-          ) : (
-            <Button variant="outline" className="w-full rounded-lg" disabled>
-              —
-            </Button>
-          )}
-        </>
-      ) : null}
-    </div>
-  </div>
-)}
-
+            <div className="flex gap-2">
+              {alquiler.contact_phone ? (
+                <>
+                  {whatsappHref && (
+                    <a
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1"
+                    >
+                      <Button className="w-full rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs px-3">
+                        <MessageCircle className="w-4 h-4 mr-1" />
+                        WhatsApp
+                      </Button>
+                    </a>
+                  )}
+                  <a
+                    href={`tel:${onlyDigits(alquiler.contact_phone)}`}
+                    className="flex-1"
+                  >
+                    <Button
+                      variant="outline"
+                      className="w-full rounded-lg text-xs px-3"
+                    >
+                      Llamar
+                    </Button>
+                  </a>
+                </>
+              ) : alquiler.contact_email ? (
+                <>
+                  <a href={`mailto:${alquiler.contact_email}`} className="flex-1">
+                    <Button className="w-full rounded-lg text-xs px-3">
+                      Correo
+                    </Button>
+                  </a>
+                  {mapsUrl ? (
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1"
+                    >
+                      <Button
+                        variant="outline"
+                        className="w-full rounded-lg text-xs px-3"
+                      >
+                        Maps
+                      </Button>
+                    </a>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

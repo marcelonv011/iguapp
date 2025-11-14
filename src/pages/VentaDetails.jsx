@@ -230,8 +230,6 @@ export default function VentaDetails() {
               </Button>
               <div className="hidden sm:block h-4 w-px bg-slate-200" />
               <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500">
-                <ShoppingBag className="w-4 h-4 text-green-500" />
-                <span>Detalle de publicación</span>
               </div>
             </div>
 
