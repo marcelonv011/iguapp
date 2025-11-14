@@ -14,6 +14,7 @@ import {
   BadgeDollarSign,
   Globe,
   Heart,
+  Plus,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -41,6 +42,7 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  orderBy,
 } from "firebase/firestore";
 
 // Helpers
@@ -78,59 +80,65 @@ async function fetchEmpleos() {
     };
   };
 
+  const isEmpleoCat = (cat) =>
+    ["empleo", "empleos", "job", "jobs", "trabajo"].includes(
+      String(cat || "").toLowerCase()
+    );
+
+  // 🔴 AHORA: solo consideramos activo si tiene status "active"/"activo"/"activa"
+  const isActivoStatus = (st) =>
+    ["active", "activo", "activa"].includes(
+      String(st || "").toLowerCase()
+    );
+
   const tryQuery = async (q) => {
     const snap = await getDocs(q);
     return snap.docs.map(normalize);
   };
 
-  // 1) Ideal
+  // 1) Ideal: category=empleo + status=active + orderBy
   try {
     const q1 = fsQuery(
       col,
       where("category", "==", "empleo"),
-      where("status", "==", "active")
+      where("status", "==", "active"),
+      orderBy("created_date", "desc")
     );
     const r1 = await tryQuery(q1);
-    if (r1.length > 0)
-      return r1.sort((a, b) => b.created_date - a.created_date);
+    // ya solo devuelve activas
+    return r1;
   } catch (e) {
     console.warn("[empleos] q1 falló:", e?.code || e);
   }
 
-  // 2) Activos, filtrar en cliente
+  // 2) Solo category=empleo, filtrando status=activo en cliente
   try {
-    const q2 = fsQuery(col, where("status", "==", "active"));
+    const q2 = fsQuery(col, where("category", "==", "empleo"));
     const r2 = await tryQuery(q2);
-    const soloEmpleo = r2.filter((x) =>
-      ["empleo", "empleos", "job", "jobs", "trabajo"].includes(x.category)
-    );
-    if (soloEmpleo.length > 0)
-      return soloEmpleo.sort((a, b) => b.created_date - a.created_date);
+    const activos = r2.filter((x) => isActivoStatus(x.status));
+    const final = activos.sort((a, b) => b.created_date - a.created_date);
+    return final;
   } catch (e) {
     console.warn("[empleos] q2 falló:", e?.code || e);
   }
 
-  // 3) Fallback traer todo y filtrar
+  // 3) Fallback: traer todo y filtrar por categoría + status=activo
   try {
     const snap = await getDocs(col);
     const all = snap.docs.map(normalize);
 
-    const empleoLike = all.filter((x) =>
-      ["empleo", "empleos", "job", "jobs", "trabajo"].includes(x.category)
-    );
-    const activos = empleoLike.filter((x) =>
-      ["active", "activa", "activo"].includes(x.status)
-    );
+    const empleoLike = all.filter((x) => isEmpleoCat(x.category));
+    const activos = empleoLike.filter((x) => isActivoStatus(x.status));
 
-    const final = (activos.length ? activos : empleoLike).sort(
-      (a, b) => b.created_date - a.created_date
-    );
+    const final = activos.sort((a, b) => b.created_date - a.created_date);
     return final;
   } catch (e) {
     console.error("[empleos] fallo general:", e?.code || e);
     return [];
   }
 }
+
+
 
 export default function Empleos() {
   // ===== Auth + Favoritos =====
@@ -459,8 +467,12 @@ export default function Empleos() {
                   >
                     <RefreshCw className="w-4 h-4 mr-2" /> Limpiar filtros
                   </Button>
+                  {/* Publicar empleo */}
                   <Link to="/admin?new=1&category=empleo" className="w-full">
-                    <Button className="w-full">Publicar empleo</Button>
+                    <Button className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      Publicar empleo
+                    </Button>
                   </Link>
                 </div>
               </div>
@@ -526,23 +538,29 @@ export default function Empleos() {
                     )}
 
                     {/* Botón Favorito (corazón) */}
-<button
-  onClick={() => toggleFavorite(job)}
-  disabled={!!favBusy[job.id]}
-  title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-  className={cn(
-    "absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur",
-    "hover:bg-blue-50 transition-colors shadow-sm",
-    isFav ? "border-blue-500" : "border-slate-200"
-  )}
-  aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
->
-  <Heart
-    className={cn("w-5 h-5 transition-colors", isFav ? "text-red-600" : "text-slate-500")}
-    fill={isFav ? "currentColor" : "none"}
-  />
-</button>
-
+                    <button
+                      onClick={() => toggleFavorite(job)}
+                      disabled={!!favBusy[job.id]}
+                      title={
+                        isFav ? "Quitar de favoritos" : "Agregar a favoritos"
+                      }
+                      className={cn(
+                        "absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur",
+                        "hover:bg-blue-50 transition-colors shadow-sm",
+                        isFav ? "border-blue-500" : "border-slate-200"
+                      )}
+                      aria-label={
+                        isFav ? "Quitar de favoritos" : "Agregar a favoritos"
+                      }
+                    >
+                      <Heart
+                        className={cn(
+                          "w-5 h-5 transition-colors",
+                          isFav ? "text-red-600" : "text-slate-500"
+                        )}
+                        fill={isFav ? "currentColor" : "none"}
+                      />
+                    </button>
 
                     <CardContent className="p-6">
                       {/* Header con avatar y espacio al ícono */}
@@ -681,7 +699,7 @@ export default function Empleos() {
                   <Button variant="secondary" onClick={clearFilters}>
                     Limpiar filtros
                   </Button>
-                  <Link to="/publicar/empleo">
+                  <Link to="/admin?new=1&category=empleo">
                     <Button>Publicar empleo</Button>
                   </Link>
                 </div>

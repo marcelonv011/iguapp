@@ -12,6 +12,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  increment,
 } from "firebase/firestore";
 import { useSearchParams } from "react-router-dom";
 
@@ -61,6 +62,20 @@ import { uploadToCloudinary } from "@/lib/uploadImage";
 const hasPriceCategory = (cat) => ["alquiler", "venta"].includes(String(cat));
 const isEmpleo = (cat) => String(cat) === "empleo";
 
+// === Fechas seguras: convierte Timestamp / string / Date a Date ===
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  return d ? d.getTime() < Date.now() : true; // si no hay fecha, tratamos como vencida
+};
+
+
 // fecha segura
 const fmtDate = (v) => {
   if (!v) return "—";
@@ -80,6 +95,63 @@ const prettyPrice = (p) => {
   }
   return `$ ${formatted}`;
 };
+
+// ==== Helpers de sincronización publicaciones <-> suscripción ====
+async function bulkUpdateUserPublications(db, email, predicate, patchFn) {
+  const q = query(collection(db, "publications"), where("created_by", "==", email));
+  const snap = await getDocs(q);
+  const updates = [];
+  snap.forEach((d) => {
+    const data = d.data();
+    if (predicate(data)) {
+      updates.push(
+        updateDoc(doc(db, "publications", d.id), patchFn(data))
+      );
+    }
+  });
+  await Promise.allSettled(updates);
+}
+
+// Pone inactivas las activas y guarda su estado previo para poder restaurar
+async function deactivateAllActivePublications(db, email) {
+  await bulkUpdateUserPublications(
+    db,
+    email,
+    // antes: (p) => p.status === "active"
+    // ahora: todo lo que NO esté "inactive" se apaga (incluye empleo sin status)
+    (p) => (p.status ?? "active") !== "inactive",
+    (p) => ({
+      status: "inactive",
+      // guardamos el previo solo si no estaba ya inactive
+      prev_status: p.status ?? "active",
+      deactivated_reason: "subscription_expired",
+      deactivated_at: serverTimestamp(),
+    })
+  );
+}
+
+
+// Restaura a "active" solo las que estaban activas antes de expirar
+async function reactivatePreviousActivePublications(db, email) {
+  await bulkUpdateUserPublications(
+    db,
+    email,
+    // solo los que quedaron inactive por vencimiento y antes eran "active"/sin status
+    (p) =>
+      (p.status ?? "inactive") === "inactive" &&
+      (p.deactivated_reason === "subscription_expired") &&
+      ((p.prev_status ?? "active") === "active"),
+    () => ({
+      status: "active",
+      prev_status: null,
+      deactivated_reason: null,
+      deactivated_at: null,
+      updated_date: serverTimestamp(),
+    })
+  );
+}
+
+
 
 /* ================= MapSearchDialog ================= */
 function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
@@ -567,16 +639,65 @@ export default function AdminPanel() {
   };
 
   const loadSubscription = async (email) => {
-    const qSub = query(
-      collection(db, "subscriptions"),
-      where("user_email", "==", email),
-      where("status", "==", "active")
-    );
-    const snap = await getDocs(qSub);
-    setSubscription(
-      snap.docs[0] ? { id: snap.docs[0].id, ...snap.docs[0].data() } : null
-    );
-  };
+  const qSub = query(collection(db, "subscriptions"), where("user_email", "==", email));
+  const snap = await getDocs(qSub);
+
+  if (snap.empty) {
+    setSubscription(null);
+    // Sin plan = aseguramos publicaciones inactivas
+    await deactivateAllActivePublications(db, email);
+    return;
+  }
+
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const pickBest = (arr) =>
+    arr.reduce((best, cur) => {
+      const getMs = (x) =>
+        x?.toDate ? x.toDate().getTime()
+        : x?.seconds ? x.seconds * 1000
+        : x ? new Date(x).getTime()
+        : -Infinity;
+      return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+    }, null);
+
+  let sub = pickBest(docs);
+  if (!sub) {
+    setSubscription(null);
+    await deactivateAllActivePublications(db, email);
+    return;
+  }
+
+  const expired = isExpired(sub.end_date);
+  const shouldBeStatus = expired ? "inactive" : "active";
+
+  if (sub.status !== shouldBeStatus) {
+    try {
+      const patch = { status: shouldBeStatus };
+      if (shouldBeStatus === "active") patch.publications_used = 0; // reset de cupo al renovar
+      await updateDoc(doc(db, "subscriptions", sub.id), patch);
+      sub = { ...sub, ...patch };
+    } catch (e) {
+      console.error("No se pudo sincronizar status de la suscripción:", e);
+    }
+  }
+
+  setSubscription(sub);
+
+  // === Sincroniza visibilidad de publicaciones según el estado del plan ===
+  try {
+    if (shouldBeStatus === "inactive") {
+      await deactivateAllActivePublications(db, email);
+    } else {
+      await reactivatePreviousActivePublications(db, email);
+    }
+  } catch (e) {
+    console.error("No se pudo sincronizar publicaciones con la suscripción:", e);
+  }
+   await loadPublications(email);
+};
+
+
+
 
   const thisMonthCount = useMemo(() => {
     const now = new Date();
@@ -593,6 +714,24 @@ export default function AdminPanel() {
       );
     }).length;
   }, [publications]);
+
+  // Si el plan trae publications_used/limit los usamos; si no, caemos al conteo por mes existente
+const planLimit = useMemo(() => {
+  return typeof subscription?.publications_limit === "number"
+    ? subscription.publications_limit
+    : 3; // fallback
+}, [subscription]);
+
+const planUsed = useMemo(() => {
+  // preferimos publications_used del plan si existe; si no, usamos thisMonthCount
+  if (typeof subscription?.publications_used === "number") {
+    return subscription.publications_used;
+  }
+  return thisMonthCount;
+}, [subscription, thisMonthCount]);
+
+const reachedLimit = planUsed >= planLimit;
+
 
   const resetForm = () => {
     setForm({
@@ -677,14 +816,14 @@ export default function AdminPanel() {
   const handleSubmit = async (ev) => {
     ev.preventDefault();
 
-    if (!subscription || subscription.status !== "active") {
+    if (!subscription || subscription.status !== "active" || isExpired(subscription?.end_date)) {
       toast.error("Necesitás una suscripción activa para publicar");
       return;
     }
-    if (!editing && thisMonthCount >= 3) {
-      toast.error("Ya usaste tus 3 publicaciones de este mes");
-      return;
-    }
+     if (!editing && reachedLimit) {
+   toast.error(`Alcanzaste tu límite de ${planLimit} publicaciones.`);
+   return;
+ }
 
     const payload = {
       title: form.title.trim(),
@@ -698,7 +837,7 @@ export default function AdminPanel() {
       location_full: form.location_full || null, // completa
       contact_phone: form.contact_phone || null,
       contact_email: form.contact_email || user.email,
-      status: form.status || "pending",
+      status: form.status ? String(form.status) : "pending",
       images: imageFiles,
       created_by: user.email,
       geo_lat: form.geo_lat ?? null,
@@ -755,11 +894,18 @@ export default function AdminPanel() {
         toast.success("Publicación actualizada");
       } else {
         await addDoc(collection(db, "publications"), payload);
+             // incrementamos el contador del plan si el doc de suscripción existe
+     if (subscription?.id) {
+       await updateDoc(doc(db, "subscriptions", subscription.id), {
+         publications_used: increment(1),
+      });
+    }
         toast.success("Publicación creada");
       }
       setDialogOpen(false);
       resetForm();
       await loadPublications(user.email);
+      await loadSubscription(user.email); // refrescá el plan por si llegó al límite
     } catch (e) {
       console.error(e);
       toast.error("Error guardando la publicación");
@@ -891,10 +1037,9 @@ export default function AdminPanel() {
                     <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-600 text-white shadow">
                       🟢 Activa
                     </span>
-                    <p className="text-sm text-slate-700 mt-1">
-                      Publicaciones este mes:{" "}
-                      <strong>{thisMonthCount}/3</strong>
-                    </p>
+                      <p className="text-sm text-slate-700 mt-1">
+     Publicaciones: <strong>{planUsed}/{planLimit}</strong>
+   </p>
                     <p className="text-sm text-slate-700">
                       Vence: {fmtDate(subscription?.end_date)}
                     </p>
@@ -927,17 +1072,23 @@ export default function AdminPanel() {
                             ? "bg-green-600 hover:bg-green-700"
                             : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
                         }`}
-                        disabled={
-                          subscription?.status === "active"
-                            ? thisMonthCount >= 3
-                            : true
-                        }
+                             disabled={
+       !subscription ||
+       subscription.status !== "active" ||
+       isExpired(subscription?.end_date) ||
+       reachedLimit
+     }
                         onClick={(e) => {
                           if (subscription?.status !== "active") {
                             e.preventDefault();
                             toast.error(
                               "Tu suscripción está inactiva. Contactanos para activarla."
                             );
+                                    return;
+      }
+      if (reachedLimit) {
+                 e.preventDefault();
+        toast.error(`Llegaste al límite de ${planLimit} publicaciones.`); 
                           }
                         }}
                       >
