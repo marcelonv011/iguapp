@@ -217,47 +217,54 @@ export default function VentaDetails() {
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-slate-100 py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Barra superior: volver + favorito */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              className="gap-2"
-              onClick={() => navigate(-1)}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Volver
-            </Button>
-          </div>
+        <div className="mb-6">
+          <div className="flex items-center justify-between rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200 px-3 sm:px-4 py-2.5 shadow-sm">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Button
+                variant="ghost"
+                className="gap-2 px-2 sm:px-3"
+                onClick={() => navigate(-1)}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Volver</span>
+              </Button>
+              <div className="hidden sm:block h-4 w-px bg-slate-200" />
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500">
+                <ShoppingBag className="w-4 h-4 text-green-500" />
+                <span>Detalle de publicación</span>
+              </div>
+            </div>
 
-          {product && (
-            <button
-              onClick={toggleFavorite}
-              disabled={!!favBusy[product.id]}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors ${
-                isFav
-                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              <Heart
-                className={`w-4 h-4 ${
-                  isFav ? "text-rose-600" : "text-slate-500"
+            {product && (
+              <button
+                onClick={toggleFavorite}
+                disabled={!!favBusy[product.id]}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs sm:text-sm transition-colors shadow-sm ${
+                  isFav
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                 }`}
-                fill={isFav ? "currentColor" : "none"}
-              />
-              {isFav ? "Quitar de favoritos" : "Guardar favorito"}
-            </button>
-          )}
+              >
+                <Heart
+                  className={`w-4 h-4 ${
+                    isFav ? "text-rose-600" : "text-slate-500"
+                  }`}
+                  fill={isFav ? "currentColor" : "none"}
+                />
+                {isFav ? "Quitar de favoritos" : "Guardar favorito"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Loading / error */}
         {loading && (
-          <Card className="rounded-2xl bg-white/80 backdrop-blur-sm border border-slate-200">
+          <Card className="rounded-2xl bg-white/85 backdrop-blur-md border border-slate-200 shadow-sm">
             <CardContent className="p-6 animate-pulse">
               <div className="h-6 bg-slate-200 rounded w-1/3 mb-4" />
               <div className="h-4 bg-slate-200 rounded w-1/4 mb-2" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                <div className="h-64 bg-slate-200 rounded-xl" />
+                <div className="h-64 bg-slate-200 rounded-2xl" />
                 <div className="space-y-3">
                   <div className="h-4 bg-slate-200 rounded w-2/3" />
                   <div className="h-4 bg-slate-200 rounded w-5/6" />
@@ -269,7 +276,7 @@ export default function VentaDetails() {
         )}
 
         {!loading && loadError && (
-          <Card className="rounded-2xl bg-white/80 backdrop-blur-sm border border-red-200">
+          <Card className="rounded-2xl bg-white/90 backdrop-blur-md border border-red-200 shadow-sm">
             <CardContent className="p-6 text-center">
               <p className="text-red-600 font-medium mb-2">{loadError}</p>
               <p className="text-slate-500 text-sm mb-4">
@@ -285,7 +292,7 @@ export default function VentaDetails() {
         {!loading && !loadError && product && (
           <>
             {/* Header con título + precio + chips */}
-            <div className="mb-6">
+            <div className="mb-7">
               <div className="flex flex-wrap items-center gap-3 mb-3">
                 <Badge className="bg-green-100 text-green-700" tone="green">
                   Venta
@@ -293,7 +300,7 @@ export default function VentaDetails() {
                 {product.saleCategory && (
                   <Badge
                     variant="outline"
-                    className="border-green-200 text-green-700"
+                    className="border-green-200 text-green-700 bg-green-50/40"
                   >
                     <Tag className="w-3 h-3 mr-1" />
                     {product.saleCategory.charAt(0).toUpperCase() +
@@ -301,25 +308,34 @@ export default function VentaDetails() {
                   </Badge>
                 )}
                 {city && (
-                  <Badge variant="outline" className="text-slate-700">
+                  <Badge
+                    variant="outline"
+                    className="text-slate-700 bg-white/70"
+                  >
                     <MapPin className="w-3 h-3 mr-1" />
                     {city}
                   </Badge>
                 )}
                 {createdLabel && (
-                  <span className="inline-flex items-center text-xs text-slate-500">
+                  <span className="inline-flex items-center text-xs text-slate-500 bg-white/70 px-2 py-1 rounded-full border border-slate-100">
                     <Calendar className="w-3 h-3 mr-1" />
                     Publicado el {createdLabel}
                   </span>
                 )}
               </div>
 
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 mb-3">
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 mb-2">
                 {product.title}
               </h1>
+              {product.description && (
+                <p className="text-sm md:text-base text-slate-600 max-w-2xl mb-3">
+                  {product.description.slice(0, 140)}
+                  {product.description.length > 140 && "…"}
+                </p>
+              )}
 
               {product.price && (
-                <div className="inline-flex items-center px-4 py-2 rounded-full bg-green-50 border border-green-200 text-green-700 font-bold text-xl">
+                <div className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-green-500/10 via-emerald-500/10 to-teal-500/10 border border-green-200 text-green-700 font-bold text-xl shadow-sm">
                   <DollarSign className="w-5 h-5 mr-1" />
                   {formatter.format(Number(product.price))}
                 </div>
@@ -327,15 +343,16 @@ export default function VentaDetails() {
             </div>
 
             {/* Layout principal */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
               {/* Imagen grande + carrusel */}
-              <Card className="overflow-hidden rounded-2xl bg-white/80 border border-slate-200">
+              <Card className="overflow-hidden rounded-2xl bg-white/90 border border-slate-200 shadow-sm">
                 {mainImage ? (
                   <div className="relative h-72 md:h-80 bg-slate-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-gradient-to-br from-green-100/60 via-white to-slate-50 pointer-events-none" />
                     <img
                       src={mainImage}
                       alt={product.title}
-                      className="w-full h-full object-contain p-4"
+                      className="relative w-full h-full object-contain p-4 md:p-6 transition-transform duration-500 hover:scale-[1.02]"
                       onError={(e) => {
                         e.currentTarget.classList.add("hidden");
                         const fallback = e.currentTarget.nextElementSibling;
@@ -352,14 +369,14 @@ export default function VentaDetails() {
                         <button
                           type="button"
                           onClick={goPrevImage}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 border border-slate-200 p-2 shadow-sm hover:bg-green-50"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/85 border border-slate-200 p-2 shadow-sm hover:bg-green-50"
                         >
                           <ChevronLeft className="w-5 h-5 text-slate-700" />
                         </button>
                         <button
                           type="button"
                           onClick={goNextImage}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 border border-slate-200 p-2 shadow-sm hover:bg-green-50"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/85 border border-slate-200 p-2 shadow-sm hover:bg-green-50"
                         >
                           <ChevronRight className="w-5 h-5 text-slate-700" />
                         </button>
@@ -393,7 +410,7 @@ export default function VentaDetails() {
 
                 {/* Thumbnails */}
                 {images.length > 1 && (
-                  <CardContent className="px-4 pb-4 pt-2">
+                  <CardContent className="px-4 pb-4 pt-3 border-t border-slate-100">
                     <div className="flex gap-2 overflow-x-auto">
                       {images.map((img, idx) => (
                         <button
@@ -432,22 +449,32 @@ export default function VentaDetails() {
 
               {/* Detalles y contacto */}
               <div className="space-y-4">
-                <Card className="rounded-2xl bg-white/90 border border-slate-200">
+                <Card className="rounded-2xl bg-white/95 border border-slate-200 shadow-sm">
                   <CardContent className="p-5 space-y-3">
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Descripción
-                    </h2>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="h-7 w-7 rounded-xl bg-green-100 text-green-700 flex items-center justify-center">
+                        <ShoppingBag className="w-4 h-4" />
+                      </div>
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Descripción
+                      </h2>
+                    </div>
                     <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
                       {product.description || "Sin descripción detallada."}
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-2xl bg-white/90 border border-slate-200">
+                <Card className="rounded-2xl bg-white/95 border border-slate-200 shadow-sm">
                   <CardContent className="p-5 space-y-4">
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Contacto
-                    </h2>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="h-7 w-7 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Phone className="w-4 h-4" />
+                      </div>
+                      <h2 className="text-base font-semibold text-slate-900">
+                        Contacto
+                      </h2>
+                    </div>
 
                     {!product.contact_phone &&
                       !product.contact_email &&
