@@ -16,9 +16,10 @@ import SettingsProfile from "@/pages/SettingsProfile.jsx";
 import Empleos from "@/pages/Empleos.jsx";
 import JobDetails from "@/pages/JobDetails";
 import Alquileres from "@/pages/Alquileres";
-import AlquilerDetalle from "@/pages/AlquilerDetalle.jsx"; // 👈 NUEVO
+import AlquilerDetalle from "@/pages/AlquilerDetalle.jsx"; 
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import ScrollToTop from "@/components/ScrollToTop.jsx"; // 👈 NUEVO
+import ScrollToTop from "@/components/ScrollToTop.jsx"; 
+import Ventas from "@/pages/Ventas.jsx";
 
 import "./index.css";
 
@@ -45,7 +46,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/empleos" element={<Empleos />} />
               <Route path="/alquileres" element={<Alquileres />} />
               <Route path="/alquileres/:id" element={<AlquilerDetalle />} /> {/* 👈 NUEVA */}
-              <Route path="/ventas" element={<div>Ventas</div>} />
+              <Route path="/ventas" element={<Ventas />} />
               <Route path="/emprendimientos" element={<div>Emprendimientos</div>} />
               <Route path="/delivery" element={<div>Delivery</div>} />
               <Route path="/restaurant" element={<div>Restaurant</div>} />
