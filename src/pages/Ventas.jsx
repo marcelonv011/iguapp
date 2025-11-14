@@ -1,5 +1,5 @@
 // src/pages/Ventas.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ShoppingBag,
@@ -7,6 +7,7 @@ import {
   DollarSign,
   Search,
   Tag,
+  Heart,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/ui/card";
@@ -22,14 +23,20 @@ import {
 } from "@/ui/select";
 
 // Firebase
-import { db } from "@/firebase";
+import { db, auth } from "@/firebase";
 import {
   collection,
   getDocs,
   query as fsQuery,
   where,
   orderBy,
+  doc,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { toast } from "sonner";
 
 // ========= Fetch de ventas desde Firestore =========
 
@@ -54,6 +61,16 @@ async function fetchVentas() {
       images: Array.isArray(r?.images) ? r.images : [],
       category: (r?.category || r?.tipo || "").toString().toLowerCase(),
       status: (r?.status || r?.estado || "").toString().toLowerCase(),
+      // subcategoría para filtros (ej: "tecnologia", "autos", etc.)
+      saleCategory: (
+        r?.sale_category ||
+        r?.saleCategory ||
+        r?.subcategory ||
+        r?.rubro ||
+        ""
+      )
+        .toString()
+        .toLowerCase(),
     };
   };
 
@@ -114,6 +131,13 @@ async function fetchVentas() {
 export default function Ventas() {
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  // ===== Favoritos / Auth (similar a Alquileres) =====
+  const [user, setUser] = useState(null);
+  const [favIds, setFavIds] = useState(new Set());
+  const [favBusy, setFavBusy] = useState({});
+  const [showFavOnly, setShowFavOnly] = useState(false);
 
   const {
     data: publications = [],
@@ -124,6 +148,67 @@ export default function Ventas() {
     queryKey: ["ventas"],
     queryFn: fetchVentas,
   });
+
+  // Escuchar auth y cargar favoritos desde /users/{uid}/favorites
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUser(u || null);
+      if (!u) {
+        setFavIds(new Set());
+        return;
+      }
+      try {
+        const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
+        setFavIds(new Set(snap.docs.map((d) => d.id)));
+      } catch (e) {
+        console.error("[ventas] error leyendo favoritos:", e);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const isFavorite = (id) => favIds.has(id);
+
+  const toggleFavorite = async (product) => {
+    if (!user) {
+      toast.error("Iniciá sesión para guardar favoritos");
+      return;
+    }
+    const id = product.id;
+    setFavBusy((m) => ({ ...m, [id]: true }));
+    try {
+      const isFav = favIds.has(id);
+      const favRef = doc(db, "users", user.uid, "favorites", id);
+
+      if (isFav) {
+        await deleteDoc(favRef);
+        setFavIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        toast("Quitado de favoritos");
+      } else {
+        await setDoc(favRef, {
+          publication_id: id,
+          category: product.category || "venta",
+          title: product.title || "",
+          created_at: serverTimestamp(),
+        });
+        setFavIds((prev) => {
+          const next = new Set(prev);
+          next.add(id);
+          return next;
+        });
+        toast.success("Guardado en favoritos");
+      }
+    } catch (err) {
+      console.error("[ventas] error toggle favorito:", err?.code || err);
+      toast.error("No se pudo actualizar el favorito");
+    } finally {
+      setFavBusy((m) => ({ ...m, [id]: false }));
+    }
+  };
 
   // Opciones de ubicación (únicas)
   const locations = useMemo(
@@ -137,6 +222,18 @@ export default function Ventas() {
     [publications]
   );
 
+  // Opciones de categoría (únicas)
+  const categories = useMemo(
+    () => [
+      ...new Set(
+        (publications || [])
+          .map((p) => p.saleCategory?.trim())
+          .filter(Boolean)
+      ),
+    ],
+    [publications]
+  );
+
   // Filtrado en memoria
   const filteredPublications = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -144,16 +241,41 @@ export default function Ventas() {
     return (publications || []).filter((pub) => {
       const title = (pub.title || "").toLowerCase();
       const desc = (pub.description || "").toLowerCase();
+      const cat = (pub.saleCategory || "").toLowerCase();
 
-      const matchesSearch =
-        !q || title.includes(q) || desc.includes(q);
+      const matchesSearch = !q || title.includes(q) || desc.includes(q);
 
       const matchesLocation =
         locationFilter === "all" || pub.location === locationFilter;
 
-      return matchesSearch && matchesLocation;
+      const matchesCategory =
+        categoryFilter === "all" || cat === categoryFilter;
+
+      const matchesFav = !showFavOnly || favIds.has(pub.id);
+
+      return matchesSearch && matchesLocation && matchesCategory && matchesFav;
     });
-  }, [publications, searchTerm, locationFilter]);
+  }, [
+    publications,
+    searchTerm,
+    locationFilter,
+    categoryFilter,
+    showFavOnly,
+    favIds,
+  ]);
+
+  const hasAnyFilter =
+    searchTerm ||
+    locationFilter !== "all" ||
+    categoryFilter !== "all" ||
+    showFavOnly;
+
+  const clearAll = () => {
+    setSearchTerm("");
+    setLocationFilter("all");
+    setCategoryFilter("all");
+    setShowFavOnly(false);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-slate-100 py-8">
@@ -176,7 +298,7 @@ export default function Ventas() {
 
           {/* Filtros */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-slate-100">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Buscador */}
               <div className="md:col-span-2">
                 <div className="relative">
@@ -189,6 +311,25 @@ export default function Ventas() {
                   />
                 </div>
               </div>
+
+              {/* Filtro categoría */}
+              <Select
+                value={categoryFilter}
+                onValueChange={setCategoryFilter}
+              >
+                <SelectTrigger className="shadow-sm">
+                  <Tag className="w-4 h-4 mr-2 text-slate-500" />
+                  <SelectValue placeholder="Categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las categorías</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               {/* Filtro ubicación */}
               <Select
@@ -208,6 +349,57 @@ export default function Ventas() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Filtros secundarios (chips + toggle favoritos + limpiar) */}
+            <div className="mt-4 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                {searchTerm && (
+                  <span className="px-2 py-1 rounded-full bg-slate-100 border">
+                    Buscando: <b>{searchTerm}</b>
+                  </span>
+                )}
+                {locationFilter !== "all" && (
+                  <span className="px-2 py-1 rounded-full bg-slate-100 border">
+                    Zona: <b>{locationFilter}</b>
+                  </span>
+                )}
+                {categoryFilter !== "all" && (
+                  <span className="px-2 py-1 rounded-full bg-slate-100 border">
+                    Categoría: <b>{categoryFilter}</b>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Toggle Solo favoritos */}
+                <button
+                  onClick={() => setShowFavOnly((v) => !v)}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                    showFavOnly
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <Heart
+                    className={`w-4 h-4 ${
+                      showFavOnly ? "text-rose-600" : "text-slate-500"
+                    }`}
+                    fill={showFavOnly ? "currentColor" : "none"}
+                  />
+                  {showFavOnly ? "Solo favoritos" : "Ver favoritos"}
+                </button>
+
+                {hasAnyFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAll}
+                  >
+                    Limpiar todo
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -255,59 +447,99 @@ export default function Ventas() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {filteredPublications.map((product) => (
-              <Card
-                key={product.id}
-                className="hover:shadow-xl transition-all group overflow-hidden border-2 border-slate-100 hover:border-green-200 bg-white"
-              >
-                {/* Imagen */}
-                {product.images && product.images[0] ? (
-                  <div className="h-48 overflow-hidden bg-slate-50 flex items-center justify-center">
-                    <img
-                      src={product.images[0]}
-                      alt={product.title}
-                      className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300 p-2"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-48 bg-gradient-to-br from-green-400 to-green-500 flex items-center justify-center">
-                    <Tag className="w-16 h-16 text-white opacity-60" />
-                  </div>
-                )}
-
-                <CardContent className="p-4">
-                  <Badge className="mb-2" tone="green">
-                    Venta
-                  </Badge>
-
-                  <h3 className="font-bold text-slate-900 mb-2 group-hover:text-green-600 transition-colors line-clamp-2">
-                    {product.title}
-                  </h3>
-
-                  {product.price && (
-                    <div className="flex items-center text-xl font-bold text-green-600 mb-2">
-                      <DollarSign className="w-5 h-5" />
-                      {Number(product.price).toLocaleString("es-AR")}
-                    </div>
-                  )}
-
-                  {product.location && (
-                    <div className="flex items-center text-slate-500 text-xs mb-3">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {product.location}
-                    </div>
-                  )}
-
-                  <Button
-                    size="sm"
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    // Más adelante podés hacer un Link a /ventas/:id o abrir un modal
+            {filteredPublications.map((product) => {
+              const isFav = isFavorite(product.id);
+              return (
+                <Card
+                  key={product.id}
+                  className="relative hover:shadow-xl transition-all group overflow-hidden border-2 border-slate-100 hover:border-green-200 bg-white"
+                >
+                  {/* Botón favorito */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(product);
+                    }}
+                    disabled={!!favBusy[product.id]}
+                    title={
+                      isFav
+                        ? "Quitar de favoritos"
+                        : "Agregar a favoritos"
+                    }
+                    className={`absolute top-3 right-3 z-10 rounded-full bg-white/95 backdrop-blur p-2 border shadow-sm hover:scale-105 transition
+                      ${
+                        isFav
+                          ? "border-rose-300 ring-2 ring-rose-200"
+                          : "border-slate-200 hover:bg-green-50"
+                      }`}
                   >
-                    Ver detalles
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                    <Heart
+                      className={`w-4 h-4 ${
+                        isFav ? "text-rose-600" : "text-slate-600"
+                      }`}
+                      fill={isFav ? "currentColor" : "none"}
+                    />
+                  </button>
+
+                  {/* Ribbon FAVORITO */}
+                  {isFav && (
+                    <div className="absolute -right-10 top-6 rotate-45 z-[5]">
+                      <div className="bg-rose-600 text-white text-xs font-semibold px-12 py-1 shadow-sm">
+                        FAVORITO
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Imagen */}
+                  {product.images && product.images[0] ? (
+                    <div className="h-48 overflow-hidden bg-slate-50 flex items-center justify-center">
+                      <img
+                        src={product.images[0]}
+                        alt={product.title}
+                        className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300 p-2"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-48 bg-gradient-to-br from-green-400 to-green-500 flex items-center justify-center">
+                      <Tag className="w-16 h-16 text-white opacity-60" />
+                    </div>
+                  )}
+
+                  <CardContent className="p-4">
+                    <Badge className="mb-2" tone="green">
+                      Venta
+                    </Badge>
+
+                    <h3 className="font-bold text-slate-900 mb-2 group-hover:text-green-600 transition-colors line-clamp-2">
+                      {product.title}
+                    </h3>
+
+                    {product.price && (
+                      <div className="flex items-center text-xl font-bold text-green-600 mb-2">
+                        <DollarSign className="w-5 h-5" />
+                        {Number(product.price).toLocaleString("es-AR")}
+                      </div>
+                    )}
+
+                    {product.location && (
+                      <div className="flex items-center text-slate-500 text-xs mb-3">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        {product.location}
+                      </div>
+                    )}
+
+                    <Button
+                      size="sm"
+                      className="w-full bg-green-600 hover:bg-green-700"
+                      // Más adelante podés hacer un Link a /ventas/:id o abrir un modal
+                    >
+                      Ver detalles
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
 
             {filteredPublications.length === 0 && !isLoading && !isError && (
               <div className="col-span-full text-center py-12">
@@ -316,7 +548,7 @@ export default function Ventas() {
                   No se encontraron productos
                 </p>
                 <p className="text-slate-400 text-sm">
-                  Probá buscar por otra palabra o cambiar la ubicación.
+                  Probá buscar por otra palabra o cambiar la ubicación / categoría.
                 </p>
               </div>
             )}

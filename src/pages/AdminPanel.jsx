@@ -75,7 +75,6 @@ const isExpired = (end) => {
   return d ? d.getTime() < Date.now() : true; // si no hay fecha, tratamos como vencida
 };
 
-
 // fecha segura
 const fmtDate = (v) => {
   if (!v) return "—";
@@ -98,15 +97,16 @@ const prettyPrice = (p) => {
 
 // ==== Helpers de sincronización publicaciones <-> suscripción ====
 async function bulkUpdateUserPublications(db, email, predicate, patchFn) {
-  const q = query(collection(db, "publications"), where("created_by", "==", email));
+  const q = query(
+    collection(db, "publications"),
+    where("created_by", "==", email)
+  );
   const snap = await getDocs(q);
   const updates = [];
   snap.forEach((d) => {
     const data = d.data();
     if (predicate(data)) {
-      updates.push(
-        updateDoc(doc(db, "publications", d.id), patchFn(data))
-      );
+      updates.push(updateDoc(doc(db, "publications", d.id), patchFn(data)));
     }
   });
   await Promise.allSettled(updates);
@@ -130,7 +130,6 @@ async function deactivateAllActivePublications(db, email) {
   );
 }
 
-
 // Restaura a "active" solo las que estaban activas antes de expirar
 async function reactivatePreviousActivePublications(db, email) {
   await bulkUpdateUserPublications(
@@ -139,8 +138,8 @@ async function reactivatePreviousActivePublications(db, email) {
     // solo los que quedaron inactive por vencimiento y antes eran "active"/sin status
     (p) =>
       (p.status ?? "inactive") === "inactive" &&
-      (p.deactivated_reason === "subscription_expired") &&
-      ((p.prev_status ?? "active") === "active"),
+      p.deactivated_reason === "subscription_expired" &&
+      (p.prev_status ?? "active") === "active",
     () => ({
       status: "active",
       prev_status: null,
@@ -150,8 +149,6 @@ async function reactivatePreviousActivePublications(db, email) {
     })
   );
 }
-
-
 
 /* ================= MapSearchDialog ================= */
 function MapSearchDialog({ open, onOpenChange, defaultQuery = "", onSelect }) {
@@ -534,6 +531,7 @@ export default function AdminPanel() {
     stock: "",
     brand: "",
     model: "",
+    sale_category: "",
 
     // Emprendimiento
     website: "",
@@ -639,65 +637,71 @@ export default function AdminPanel() {
   };
 
   const loadSubscription = async (email) => {
-  const qSub = query(collection(db, "subscriptions"), where("user_email", "==", email));
-  const snap = await getDocs(qSub);
+    const qSub = query(
+      collection(db, "subscriptions"),
+      where("user_email", "==", email)
+    );
+    const snap = await getDocs(qSub);
 
-  if (snap.empty) {
-    setSubscription(null);
-    // Sin plan = aseguramos publicaciones inactivas
-    await deactivateAllActivePublications(db, email);
-    return;
-  }
-
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const pickBest = (arr) =>
-    arr.reduce((best, cur) => {
-      const getMs = (x) =>
-        x?.toDate ? x.toDate().getTime()
-        : x?.seconds ? x.seconds * 1000
-        : x ? new Date(x).getTime()
-        : -Infinity;
-      return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
-    }, null);
-
-  let sub = pickBest(docs);
-  if (!sub) {
-    setSubscription(null);
-    await deactivateAllActivePublications(db, email);
-    return;
-  }
-
-  const expired = isExpired(sub.end_date);
-  const shouldBeStatus = expired ? "inactive" : "active";
-
-  if (sub.status !== shouldBeStatus) {
-    try {
-      const patch = { status: shouldBeStatus };
-      if (shouldBeStatus === "active") patch.publications_used = 0; // reset de cupo al renovar
-      await updateDoc(doc(db, "subscriptions", sub.id), patch);
-      sub = { ...sub, ...patch };
-    } catch (e) {
-      console.error("No se pudo sincronizar status de la suscripción:", e);
-    }
-  }
-
-  setSubscription(sub);
-
-  // === Sincroniza visibilidad de publicaciones según el estado del plan ===
-  try {
-    if (shouldBeStatus === "inactive") {
+    if (snap.empty) {
+      setSubscription(null);
+      // Sin plan = aseguramos publicaciones inactivas
       await deactivateAllActivePublications(db, email);
-    } else {
-      await reactivatePreviousActivePublications(db, email);
+      return;
     }
-  } catch (e) {
-    console.error("No se pudo sincronizar publicaciones con la suscripción:", e);
-  }
-   await loadPublications(email);
-};
 
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const pickBest = (arr) =>
+      arr.reduce((best, cur) => {
+        const getMs = (x) =>
+          x?.toDate
+            ? x.toDate().getTime()
+            : x?.seconds
+            ? x.seconds * 1000
+            : x
+            ? new Date(x).getTime()
+            : -Infinity;
+        return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+      }, null);
 
+    let sub = pickBest(docs);
+    if (!sub) {
+      setSubscription(null);
+      await deactivateAllActivePublications(db, email);
+      return;
+    }
 
+    const expired = isExpired(sub.end_date);
+    const shouldBeStatus = expired ? "inactive" : "active";
+
+    if (sub.status !== shouldBeStatus) {
+      try {
+        const patch = { status: shouldBeStatus };
+        if (shouldBeStatus === "active") patch.publications_used = 0; // reset de cupo al renovar
+        await updateDoc(doc(db, "subscriptions", sub.id), patch);
+        sub = { ...sub, ...patch };
+      } catch (e) {
+        console.error("No se pudo sincronizar status de la suscripción:", e);
+      }
+    }
+
+    setSubscription(sub);
+
+    // === Sincroniza visibilidad de publicaciones según el estado del plan ===
+    try {
+      if (shouldBeStatus === "inactive") {
+        await deactivateAllActivePublications(db, email);
+      } else {
+        await reactivatePreviousActivePublications(db, email);
+      }
+    } catch (e) {
+      console.error(
+        "No se pudo sincronizar publicaciones con la suscripción:",
+        e
+      );
+    }
+    await loadPublications(email);
+  };
 
   const thisMonthCount = useMemo(() => {
     const now = new Date();
@@ -716,22 +720,21 @@ export default function AdminPanel() {
   }, [publications]);
 
   // Si el plan trae publications_used/limit los usamos; si no, caemos al conteo por mes existente
-const planLimit = useMemo(() => {
-  return typeof subscription?.publications_limit === "number"
-    ? subscription.publications_limit
-    : 3; // fallback
-}, [subscription]);
+  const planLimit = useMemo(() => {
+    return typeof subscription?.publications_limit === "number"
+      ? subscription.publications_limit
+      : 3; // fallback
+  }, [subscription]);
 
-const planUsed = useMemo(() => {
-  // preferimos publications_used del plan si existe; si no, usamos thisMonthCount
-  if (typeof subscription?.publications_used === "number") {
-    return subscription.publications_used;
-  }
-  return thisMonthCount;
-}, [subscription, thisMonthCount]);
+  const planUsed = useMemo(() => {
+    // preferimos publications_used del plan si existe; si no, usamos thisMonthCount
+    if (typeof subscription?.publications_used === "number") {
+      return subscription.publications_used;
+    }
+    return thisMonthCount;
+  }, [subscription, thisMonthCount]);
 
-const reachedLimit = planUsed >= planLimit;
-
+  const reachedLimit = planUsed >= planLimit;
 
   const resetForm = () => {
     setForm({
@@ -767,6 +770,7 @@ const reachedLimit = planUsed >= planLimit;
       stock: "",
       brand: "",
       model: "",
+      sale_category: "",
       website: "",
       instagram: "",
       whatsapp: "",
@@ -816,14 +820,18 @@ const reachedLimit = planUsed >= planLimit;
   const handleSubmit = async (ev) => {
     ev.preventDefault();
 
-    if (!subscription || subscription.status !== "active" || isExpired(subscription?.end_date)) {
+    if (
+      !subscription ||
+      subscription.status !== "active" ||
+      isExpired(subscription?.end_date)
+    ) {
       toast.error("Necesitás una suscripción activa para publicar");
       return;
     }
-     if (!editing && reachedLimit) {
-   toast.error(`Alcanzaste tu límite de ${planLimit} publicaciones.`);
-   return;
- }
+    if (!editing && reachedLimit) {
+      toast.error(`Alcanzaste tu límite de ${planLimit} publicaciones.`);
+      return;
+    }
 
     const payload = {
       title: form.title.trim(),
@@ -877,6 +885,7 @@ const reachedLimit = planUsed >= planLimit;
         stock: form.stock ? Number(form.stock) : null,
         brand: form.brand || null,
         model: form.model || null,
+        sale_category: form.sale_category || null, // 👈 GUARDA SUBCATEGORÍA
       });
     }
     if (form.category === "emprendimiento") {
@@ -894,12 +903,12 @@ const reachedLimit = planUsed >= planLimit;
         toast.success("Publicación actualizada");
       } else {
         await addDoc(collection(db, "publications"), payload);
-             // incrementamos el contador del plan si el doc de suscripción existe
-     if (subscription?.id) {
-       await updateDoc(doc(db, "subscriptions", subscription.id), {
-         publications_used: increment(1),
-      });
-    }
+        // incrementamos el contador del plan si el doc de suscripción existe
+        if (subscription?.id) {
+          await updateDoc(doc(db, "subscriptions", subscription.id), {
+            publications_used: increment(1),
+          });
+        }
         toast.success("Publicación creada");
       }
       setDialogOpen(false);
@@ -947,6 +956,7 @@ const reachedLimit = planUsed >= planLimit;
       stock: p.stock ?? "",
       brand: p.brand || "",
       model: p.model || "",
+      sale_category: p.sale_category || "",
       website: p.website || "",
       instagram: p.instagram || "",
       whatsapp: p.whatsapp || "",
@@ -1037,9 +1047,12 @@ const reachedLimit = planUsed >= planLimit;
                     <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-600 text-white shadow">
                       🟢 Activa
                     </span>
-                      <p className="text-sm text-slate-700 mt-1">
-     Publicaciones: <strong>{planUsed}/{planLimit}</strong>
-   </p>
+                    <p className="text-sm text-slate-700 mt-1">
+                      Publicaciones:{" "}
+                      <strong>
+                        {planUsed}/{planLimit}
+                      </strong>
+                    </p>
                     <p className="text-sm text-slate-700">
                       Vence: {fmtDate(subscription?.end_date)}
                     </p>
@@ -1072,23 +1085,25 @@ const reachedLimit = planUsed >= planLimit;
                             ? "bg-green-600 hover:bg-green-700"
                             : "bg-red-600 hover:bg-red-700 cursor-not-allowed opacity-90"
                         }`}
-                             disabled={
-       !subscription ||
-       subscription.status !== "active" ||
-       isExpired(subscription?.end_date) ||
-       reachedLimit
-     }
+                        disabled={
+                          !subscription ||
+                          subscription.status !== "active" ||
+                          isExpired(subscription?.end_date) ||
+                          reachedLimit
+                        }
                         onClick={(e) => {
                           if (subscription?.status !== "active") {
                             e.preventDefault();
                             toast.error(
                               "Tu suscripción está inactiva. Contactanos para activarla."
                             );
-                                    return;
-      }
-      if (reachedLimit) {
-                 e.preventDefault();
-        toast.error(`Llegaste al límite de ${planLimit} publicaciones.`); 
+                            return;
+                          }
+                          if (reachedLimit) {
+                            e.preventDefault();
+                            toast.error(
+                              `Llegaste al límite de ${planLimit} publicaciones.`
+                            );
                           }
                         }}
                       >
@@ -1497,6 +1512,41 @@ const reachedLimit = planUsed >= planLimit;
                                   setForm({ ...form, model: e.target.value })
                                 }
                               />
+                            </div>
+                            <div>
+                              <Label>Categoría del producto</Label>
+                              <Select
+                                value={form.sale_category}
+                                onValueChange={(v) =>
+                                  setForm({ ...form, sale_category: v })
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Elegí una categoría" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="tecnologia">
+                                    Tecnología
+                                  </SelectItem>
+                                  <SelectItem value="autos">
+                                    Autos / Motos
+                                  </SelectItem>
+                                  <SelectItem value="hogar">Hogar</SelectItem>
+                                  <SelectItem value="electrodomesticos">
+                                    Electrodomésticos
+                                  </SelectItem>
+                                  <SelectItem value="muebles">
+                                    Muebles
+                                  </SelectItem>
+                                  <SelectItem value="ropa">
+                                    Ropa y accesorios
+                                  </SelectItem>
+                                  <SelectItem value="deportes">
+                                    Deportes
+                                  </SelectItem>
+                                  <SelectItem value="otros">Otros</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                         </div>
