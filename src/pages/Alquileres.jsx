@@ -63,9 +63,19 @@ const getNormalizedPeriod = (p) => {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  if (/(^|\b)(dia|diario|por dia|daily|per day|day)(\b|$)/.test(raw)) return "dia";
-  if (/(^|\b)(mes|mensual|monthly|per month|month)(\b|$)/.test(raw)) return "mes";
+  if (/(^|\b)(dia|diario|por dia|daily|per day|day)(\b|$)/.test(raw))
+    return "dia";
+  if (/(^|\b)(mes|mensual|monthly|per month|month)(\b|$)/.test(raw))
+    return "mes";
   return "mes";
+};
+
+// Helper: extraer ciudad de la ubicación
+// "Av. Misiones 123, Puerto Iguazú" -> "Puerto Iguazú"
+const getCityFromLocation = (loc) => {
+  if (!loc) return "";
+  const parts = loc.split(",");
+  return parts[parts.length - 1].trim();
 };
 
 export default function Alquileres() {
@@ -140,10 +150,23 @@ export default function Alquileres() {
   // Resetear página cuando cambian filtros/búsqueda/favoritos
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, locationFilter, periodFilter, priceMin, priceMax, sortBy, showFavOnly, favIds]);
+  }, [
+    searchTerm,
+    locationFilter,
+    periodFilter,
+    priceMin,
+    priceMax,
+    sortBy,
+    showFavOnly,
+    favIds,
+  ]);
 
   // ===== Query Firestore =====
-  const { data: publications = [], isLoading, error } = useQuery({
+  const {
+    data: publications = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["alquileres"],
     queryFn: async () => {
       const col = collection(db, "publications");
@@ -159,7 +182,11 @@ export default function Alquileres() {
         const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (rows1.length > 0) return rows1;
       } catch (e) {
-        console.warn("[q1] Necesita índice o falló created_date/orderBy:", e?.code, e?.message);
+        console.warn(
+          "[q1] Necesita índice o falló created_date/orderBy:",
+          e?.code,
+          e?.message
+        );
       }
 
       try {
@@ -178,12 +205,16 @@ export default function Alquileres() {
       try {
         const q3 = fsQuery(col, orderBy("created_date", "desc"));
         const s3 = await getDocs(q3);
-        const sample = s3.docs.slice(0, 10).map((d) => ({ id: d.id, ...d.data() }));
+        const sample = s3.docs
+          .slice(0, 10)
+          .map((d) => ({ id: d.id, ...d.data() }));
         console.info("[Diagnóstico] Muestra de 'publications':", sample);
 
         if (sample.length === 0) {
           const s4 = await getDocs(col);
-          const sample2 = s4.docs.slice(0, 10).map((d) => ({ id: d.id, ...d.data() }));
+          const sample2 = s4.docs
+            .slice(0, 10)
+            .map((d) => ({ id: d.id, ...d.data() }));
           console.info("[Diagnóstico] Muestra sin orderBy:", sample2);
         }
         return [];
@@ -195,12 +226,16 @@ export default function Alquileres() {
   });
 
   const formatter = useMemo(
-    () => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
+    () =>
+      new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
     []
   );
 
+  // Ahora las opciones de ubicación son SOLO ciudades
   const locations = useMemo(() => {
-    const set = new Set(publications.map((p) => p.location).filter(Boolean));
+    const set = new Set(
+      publications.map((p) => getCityFromLocation(p.location)).filter(Boolean)
+    );
     return ["all", ...Array.from(set)];
   }, [publications]);
 
@@ -215,10 +250,13 @@ export default function Alquileres() {
         p?.description?.toLowerCase().includes(term) ||
         p?.location?.toLowerCase().includes(term);
 
-      const matchesLocation = locationFilter === "all" || p?.location === locationFilter;
+      const city = getCityFromLocation(p?.location);
+      const matchesLocation =
+        locationFilter === "all" || city === locationFilter;
 
       const normalizedPeriod = getNormalizedPeriod(p);
-      const matchesPeriod = periodFilter === "all" || normalizedPeriod === periodFilter;
+      const matchesPeriod =
+        periodFilter === "all" || normalizedPeriod === periodFilter;
 
       const price = Number(p?.price || 0);
       const matchesMin = priceMin === "" || price >= Number(priceMin);
@@ -244,7 +282,9 @@ export default function Alquileres() {
     });
 
     // Favoritos primero (sin romper el orden entre iguales)
-    list.sort((a, b) => (favIds.has(b.id) ? 1 : 0) - (favIds.has(a.id) ? 1 : 0));
+    list.sort(
+      (a, b) => (favIds.has(b.id) ? 1 : 0) - (favIds.has(a.id) ? 1 : 0)
+    );
 
     return list;
   }, [
@@ -296,7 +336,9 @@ export default function Alquileres() {
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">
                 Alquileres
               </h1>
-              <p className="text-slate-600">Encontrá tu próximo hogar con filtros inteligentes</p>
+              <p className="text-slate-600">
+                Encontrá tu próximo hogar con filtros inteligentes
+              </p>
             </div>
           </div>
         </div>
@@ -439,7 +481,8 @@ export default function Alquileres() {
               )}
               {periodFilter !== "all" && (
                 <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
-                  Período: <b>{periodFilter === "mes" ? "Mensual" : "Diario"}</b>
+                  Período:{" "}
+                  <b>{periodFilter === "mes" ? "Mensual" : "Diario"}</b>
                 </span>
               )}
               {(priceMin || priceMax) && (
@@ -460,7 +503,9 @@ export default function Alquileres() {
                 }`}
               >
                 <Heart
-                  className={`w-4 h-4 ${showFavOnly ? "text-rose-600" : "text-slate-500"}`}
+                  className={`w-4 h-4 ${
+                    showFavOnly ? "text-rose-600" : "text-slate-500"
+                  }`}
                   fill={showFavOnly ? "currentColor" : "none"}
                 />
                 {showFavOnly ? "Solo favoritos" : "Ver favoritos"}
@@ -490,21 +535,34 @@ export default function Alquileres() {
         {/* Meta */}
         {!isLoading && !error && (
           <div className="mb-4 text-sm text-slate-600">
-            {filtered.length} {filtered.length === 1 ? "resultado" : "resultados"}
-            {filtered.length > 0 && <> · Página {currentPage} de {totalPages}</>}
+            {filtered.length}{" "}
+            {filtered.length === 1 ? "resultado" : "resultados"}
+            {filtered.length > 0 && (
+              <>
+                {" "}
+                · Página {currentPage} de {totalPages}
+              </>
+            )}
           </div>
         )}
 
         {/* Contenido */}
         {error ? (
           <div className="text-center py-16">
-            <p className="text-red-600 font-medium">Hubo un error al cargar los datos.</p>
-            <p className="text-slate-500 text-sm">Intentá nuevamente en unos segundos.</p>
+            <p className="text-red-600 font-medium">
+              Hubo un error al cargar los datos.
+            </p>
+            <p className="text-slate-500 text-sm">
+              Intentá nuevamente en unos segundos.
+            </p>
           </div>
         ) : isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(9)].map((_, i) => (
-              <Card key={i} className="overflow-hidden animate-pulse rounded-2xl">
+              <Card
+                key={i}
+                className="overflow-hidden animate-pulse rounded-2xl"
+              >
                 <div className="h-48 bg-slate-200" />
                 <CardContent className="p-6">
                   <div className="h-6 bg-slate-200 rounded mb-2" />
@@ -519,7 +577,9 @@ export default function Alquileres() {
               {pageItems.map((property) => {
                 const normalizedPeriodForCard = getNormalizedPeriod(property);
                 const priceLabel = property.price
-                  ? `${formatter.format(Number(property.price))}/${normalizedPeriodForCard === "mes" ? "mes" : "día"}`
+                  ? `${formatter.format(Number(property.price))}/${
+                      normalizedPeriodForCard === "mes" ? "mes" : "día"
+                    }`
                   : null;
                 const cover = property.images && property.images[0];
                 const isFav = favIds.has(property.id);
@@ -533,13 +593,21 @@ export default function Alquileres() {
                     <button
                       onClick={() => toggleFavorite(property)}
                       disabled={!!favBusy[property.id]}
-                      title={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+                      title={
+                        isFav ? "Quitar de favoritos" : "Agregar a favoritos"
+                      }
                       className={`absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur shadow-sm transition-all
-                        ${isFav ? "border-rose-300 ring-2 ring-rose-200" : "border-slate-200 hover:bg-purple-50"}
+                        ${
+                          isFav
+                            ? "border-rose-300 ring-2 ring-rose-200"
+                            : "border-slate-200 hover:bg-purple-50"
+                        }
                         active:scale-95`}
                     >
                       <Heart
-                        className={`w-5 h-5 transition-colors ${isFav ? "text-rose-600" : "text-slate-600"}`}
+                        className={`w-5 h-5 transition-colors ${
+                          isFav ? "text-rose-600" : "text-slate-600"
+                        }`}
                         fill={isFav ? "currentColor" : "none"}
                       />
                     </button>
@@ -580,9 +648,16 @@ export default function Alquileres() {
 
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-3">
-                        <Badge className="bg-purple-100 text-purple-700">Alquiler</Badge>
-                        <Badge variant="outline" className="text-xs border-purple-200 text-purple-700">
-                          {normalizedPeriodForCard === "mes" ? "Por mes" : "Por día"}
+                        <Badge className="bg-purple-100 text-purple-700">
+                          Alquiler
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-xs border-purple-200 text-purple-700"
+                        >
+                          {normalizedPeriodForCard === "mes"
+                            ? "Por mes"
+                            : "Por día"}
                         </Badge>
                       </div>
 
@@ -604,7 +679,7 @@ export default function Alquileres() {
                       {property.location && (
                         <div className="flex items-center text-slate-600 text-sm mb-5">
                           <MapPin className="w-4 h-4 mr-2 text-slate-400" />
-                          {property.location}
+                          {getCityFromLocation(property.location)}
                         </div>
                       )}
 
@@ -613,7 +688,9 @@ export default function Alquileres() {
                           asChild
                           className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-sm"
                         >
-                          <Link to={`/alquileres/${property.id}`}>Ver detalles</Link>
+                          <Link to={`/alquileres/${property.id}`}>
+                            Ver detalles
+                          </Link>
                         </Button>
                       </div>
                     </CardContent>
@@ -624,9 +701,12 @@ export default function Alquileres() {
               {filtered.length === 0 && (
                 <div className="col-span-full text-center py-16 rounded-2xl border bg-white/70 backdrop-blur-sm">
                   <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-700 text-lg">No se encontraron propiedades</p>
+                  <p className="text-slate-700 text-lg">
+                    No se encontraron propiedades
+                  </p>
                   <p className="text-slate-500 text-sm">
-                    Probá limpiando filtros o cambiando los términos de búsqueda.
+                    Probá limpiando filtros o cambiando los términos de
+                    búsqueda.
                   </p>
                   <div className="mt-6">
                     <Link to="/admin?new=1&category=alquiler">

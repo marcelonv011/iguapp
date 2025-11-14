@@ -38,6 +38,30 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "sonner";
 
+// ========= Helper: obtiene ciudad desde location =========
+// Soporta formatos tipo:
+// "Av. Misiones 123, Puerto Iguazú"
+// "Puerto Iguazú - Barrio Las Orquídeas"
+// "Foz do Iguaçu, PR"
+function getCityFromLocation(location) {
+  if (!location) return null;
+  let loc = location.toString().trim();
+
+  // Primero cortamos por coma y nos quedamos con la última parte
+  const commaParts = loc.split(",").map((p) => p.trim()).filter(Boolean);
+  if (commaParts.length > 0) {
+    loc = commaParts[commaParts.length - 1];
+  }
+
+  // Si tiene guión, nos quedamos con la primera parte (antes del barrio)
+  const dashParts = loc.split("-").map((p) => p.trim()).filter(Boolean);
+  if (dashParts.length > 0) {
+    loc = dashParts[0];
+  }
+
+  return loc || null;
+}
+
 // ========= Fetch de ventas desde Firestore =========
 
 async function fetchVentas() {
@@ -130,7 +154,7 @@ async function fetchVentas() {
 
 export default function Ventas() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [locationFilter, setLocationFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all"); // ahora es por ciudad
   const [categoryFilter, setCategoryFilter] = useState("all");
 
   // ===== Favoritos / Auth (similar a Alquileres) =====
@@ -210,12 +234,12 @@ export default function Ventas() {
     }
   };
 
-  // Opciones de ubicación (únicas)
+  // Opciones de ubicación (CIUDADES únicas)
   const locations = useMemo(
     () => [
       ...new Set(
         (publications || [])
-          .map((p) => p.location?.trim())
+          .map((p) => getCityFromLocation(p.location))
           .filter(Boolean)
       ),
     ],
@@ -242,11 +266,12 @@ export default function Ventas() {
       const title = (pub.title || "").toLowerCase();
       const desc = (pub.description || "").toLowerCase();
       const cat = (pub.saleCategory || "").toLowerCase();
+      const pubCity = getCityFromLocation(pub.location);
 
       const matchesSearch = !q || title.includes(q) || desc.includes(q);
 
       const matchesLocation =
-        locationFilter === "all" || pub.location === locationFilter;
+        locationFilter === "all" || pubCity === locationFilter;
 
       const matchesCategory =
         categoryFilter === "all" || cat === categoryFilter;
@@ -331,7 +356,7 @@ export default function Ventas() {
                 </SelectContent>
               </Select>
 
-              {/* Filtro ubicación */}
+              {/* Filtro ubicación (solo ciudades) */}
               <Select
                 value={locationFilter}
                 onValueChange={setLocationFilter}
@@ -525,7 +550,8 @@ export default function Ventas() {
                     {product.location && (
                       <div className="flex items-center text-slate-500 text-xs mb-3">
                         <MapPin className="w-3 h-3 mr-1" />
-                        {product.location}
+                        {/* Mostramos la ciudad también acá si querés */}
+                        {getCityFromLocation(product.location) || product.location}
                       </div>
                     )}
 

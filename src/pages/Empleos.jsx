@@ -49,6 +49,30 @@ import {
 const toNumber = (v) =>
   v === undefined || v === null || v === "" ? undefined : Number(v);
 
+// ========= Helper: obtiene ciudad desde location =========
+// Soporta formatos tipo:
+// "Av. Misiones 123, Puerto Iguazú"
+// "Puerto Iguazú - Barrio Las Orquídeas"
+// "Foz do Iguaçu, PR"
+function getCityFromLocation(location) {
+  if (!location) return null;
+  let loc = location.toString().trim();
+
+  // Primero cortamos por coma y nos quedamos con la última parte
+  const commaParts = loc.split(",").map((p) => p.trim()).filter(Boolean);
+  if (commaParts.length > 0) {
+    loc = commaParts[commaParts.length - 1];
+  }
+
+  // Si tiene guión, nos quedamos con la primera parte (antes del barrio)
+  const dashParts = loc.split("-").map((p) => p.trim()).filter(Boolean);
+  if (dashParts.length > 0) {
+    loc = dashParts[0];
+  }
+
+  return loc || null;
+}
+
 // ===== Data fetch =====
 async function fetchEmpleos() {
   const col = collection(db, "publications");
@@ -85,7 +109,6 @@ async function fetchEmpleos() {
       String(cat || "").toLowerCase()
     );
 
-  // 🔴 AHORA: solo consideramos activo si tiene status "active"/"activo"/"activa"
   const isActivoStatus = (st) =>
     ["active", "activo", "activa"].includes(
       String(st || "").toLowerCase()
@@ -105,7 +128,6 @@ async function fetchEmpleos() {
       orderBy("created_date", "desc")
     );
     const r1 = await tryQuery(q1);
-    // ya solo devuelve activas
     return r1;
   } catch (e) {
     console.warn("[empleos] q1 falló:", e?.code || e);
@@ -137,8 +159,6 @@ async function fetchEmpleos() {
     return [];
   }
 }
-
-
 
 export default function Empleos() {
   // ===== Auth + Favoritos =====
@@ -248,11 +268,13 @@ export default function Empleos() {
     queryFn: fetchEmpleos,
   });
 
-  // ===== Opciones de ubicación =====
+  // ===== Opciones de ubicación (SOLO CIUDADES) =====
   const locations = useMemo(
     () => [
       ...new Set(
-        (publications || []).map((p) => p.location?.trim()).filter(Boolean)
+        (publications || [])
+          .map((p) => getCityFromLocation(p.location))
+          .filter(Boolean)
       ),
     ],
     [publications]
@@ -270,11 +292,14 @@ export default function Empleos() {
         pub.description?.toLowerCase().includes(q) ||
         pub.company?.toLowerCase().includes(q);
 
+      const jobCity = getCityFromLocation(pub.location);
       const matchesLocation =
-        locationFilter === "all" || pub.location === locationFilter;
+        locationFilter === "all" || jobCity === locationFilter;
+
       const matchesType =
         typeFilter === "all" ||
         (pub.employment_type || "").toLowerCase() === typeFilter;
+
       const matchesRemote =
         remoteFilter === "all" ||
         (pub.work_mode || "all").toLowerCase() === remoteFilter;
@@ -620,7 +645,8 @@ export default function Empleos() {
                         {job.location && (
                           <div className="inline-flex items-center text-slate-700">
                             <MapPin className="w-4 h-4 mr-2 text-slate-400" />{" "}
-                            {job.location}
+                            {/* Solo ciudad en el card */}
+                            {getCityFromLocation(job.location)}
                           </div>
                         )}
 
