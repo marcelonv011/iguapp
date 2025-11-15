@@ -540,7 +540,6 @@ export default function AdminPanel() {
     delivery: "no",
     business_type: "servicios", // productos | servicios | comida
     rating: "5", // string en el form, número al guardar
-    featured: "no", // "si" | "no"
     open_hours: "", // 👈 NUEVO
   });
 
@@ -781,7 +780,6 @@ export default function AdminPanel() {
       delivery: "no",
       business_type: "servicios",
       rating: "5",
-      featured: "no",
       open_hours: "", // 👈 NUEVO
     });
     setImageFiles([]);
@@ -897,17 +895,18 @@ export default function AdminPanel() {
       });
     }
     if (form.category === "emprendimiento") {
-      Object.assign(payload, {
-        website: form.website || null,
-        instagram: form.instagram || null,
-        whatsapp: form.whatsapp || null,
-        delivery: form.delivery,
-        business_type: form.business_type || null,
-        rating: form.rating ? Number(form.rating) : null,
-        featured: form.featured === "si",
-        open_hours: form.open_hours || null, // 👈 NUEVO
-      });
-    }
+  Object.assign(payload, {
+    website: form.website || null,
+    instagram: form.instagram || null,
+    whatsapp: form.whatsapp || null,
+    delivery: form.delivery,
+    business_type: form.business_type || null,
+    rating: form.rating ? Number(form.rating) : null,
+    open_hours: form.open_hours || null,
+  });
+}
+
+
 
     try {
       if (editing) {
@@ -978,7 +977,6 @@ export default function AdminPanel() {
         typeof p.rating === "number" && !isNaN(p.rating)
           ? String(p.rating)
           : "5",
-      featured: p.featured ? "si" : "no",
       open_hours: p.open_hours || "",
     });
     setImageFiles(
@@ -1189,7 +1187,7 @@ export default function AdminPanel() {
                               <SelectItem value="alquiler">Alquiler</SelectItem>
                               <SelectItem value="venta">Venta</SelectItem>
                               <SelectItem value="emprendimiento">
-                                Emprendimiento
+                                Negocio
                               </SelectItem>
                             </SelectContent>
                           </Select>
@@ -1214,7 +1212,7 @@ export default function AdminPanel() {
                             />
                           </div>
                         )}
-                      </div>
+                      </div>              
 
                       {/* Ubicación */}
                       <div>

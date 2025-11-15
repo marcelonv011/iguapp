@@ -55,6 +55,7 @@ const getCityFromLocation = (loc) => {
 
 export default function Emprendimientos() {
   const queryClient = useQueryClient();
+
   // ===== Auth + Favoritos =====
   const [user, setUser] = useState(null);
   const [favIds, setFavIds] = useState(new Set());
@@ -73,6 +74,7 @@ export default function Emprendimientos() {
       try {
         const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
         setFavIds(new Set(snap.docs.map((d) => d.id)));
+
         // Cargar calificaciones previas del usuario
         const ratingsSnap = await getDocs(
           collection(db, "users", u.uid, "business_ratings")
@@ -200,13 +202,12 @@ export default function Emprendimientos() {
   // ===== Filtros / estado =====
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("newest"); // "newest" | "nameAsc"
+  const [sortBy, setSortBy] = useState("newest"); // "newest" | "nameAsc" | "topRated"
   const [showFavOnly, setShowFavOnly] = useState(false);
 
-  // NUEVO: filtros extra
+  // filtros extra
   const [typeFilter, setTypeFilter] = useState("all"); // productos | servicios | comida
   const [contactFilter, setContactFilter] = useState("all"); // all | whatsapp | instagram
-  const [featuredOnly, setFeaturedOnly] = useState(false); // solo destacados
 
   // Paginación
   const [page, setPage] = useState(1);
@@ -220,9 +221,8 @@ export default function Emprendimientos() {
     sortBy,
     showFavOnly,
     favIds,
-    typeFilter, // NUEVO
-    contactFilter, // NUEVO
-    featuredOnly, // NUEVO
+    typeFilter,
+    contactFilter,
   ]);
 
   // ===== Query Firestore =====
@@ -304,12 +304,12 @@ export default function Emprendimientos() {
 
       const matchesFav = !showFavOnly || favIds.has(p.id);
 
-      // NUEVO: filtro por rubro / tipo de negocio
+      // filtro por rubro / tipo de negocio
       const matchesType =
         typeFilter === "all" ||
         (p.business_type || "").toLowerCase() === typeFilter;
 
-      // NUEVO: filtro por tipo de contacto
+      // filtro por tipo de contacto
       const hasWhatsapp = !!p.whatsapp || !!p.contact_whatsapp;
       const hasInstagram = !!p.instagram || !!p.contact_instagram;
 
@@ -317,16 +317,12 @@ export default function Emprendimientos() {
       if (contactFilter === "whatsapp") matchesContact = hasWhatsapp;
       if (contactFilter === "instagram") matchesContact = hasInstagram;
 
-      // NUEVO: solo destacados
-      const matchesFeatured = !featuredOnly || !!p.featured;
-
       return (
         matchesSearch &&
         matchesLocation &&
         matchesFav &&
         matchesType &&
-        matchesContact &&
-        matchesFeatured
+        matchesContact
       );
     });
 
@@ -335,10 +331,28 @@ export default function Emprendimientos() {
       if (sortBy === "nameAsc") {
         return (a.title || "").localeCompare(b.title || "");
       }
+
+      if (sortBy === "topRated") {
+        const ra = typeof a.rating === "number" ? a.rating : 0;
+        const rb = typeof b.rating === "number" ? b.rating : 0;
+
+        // Primero por rating promedio
+        if (rb !== ra) return rb - ra;
+
+        // Si empatan, más votos primero
+        const ca = typeof a.rating_count === "number" ? a.rating_count : 0;
+        const cb = typeof b.rating_count === "number" ? b.rating_count : 0;
+        if (cb !== ca) return cb - ca;
+
+        // Último criterio: más nuevo primero
+        return new Date(b.created_date || 0) - new Date(a.created_date || 0);
+      }
+
+      // default: más recientes
       return new Date(b.created_date || 0) - new Date(a.created_date || 0);
     });
 
-    // 2) luego favoritos primero
+    // luego favoritos primero (respetando el orden interno de la lista)
     list.sort(
       (a, b) => (favIds.has(b.id) ? 1 : 0) - (favIds.has(a.id) ? 1 : 0)
     );
@@ -351,9 +365,8 @@ export default function Emprendimientos() {
     sortBy,
     favIds,
     showFavOnly,
-    typeFilter, // NUEVO
-    contactFilter, // NUEVO
-    featuredOnly, // NUEVO
+    typeFilter,
+    contactFilter,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -371,7 +384,6 @@ export default function Emprendimientos() {
     setShowFavOnly(false);
     setTypeFilter("all");
     setContactFilter("all");
-    setFeaturedOnly(false);
     setPage(1);
   };
 
@@ -440,7 +452,7 @@ export default function Emprendimientos() {
               </SelectContent>
             </Select>
 
-            {/* NUEVO: Rubro / tipo de negocio */}
+            {/* Rubro / tipo de negocio */}
             <Select
               value={typeFilter}
               onValueChange={(v) => {
@@ -475,6 +487,7 @@ export default function Emprendimientos() {
               <SelectContent>
                 <SelectItem value="newest">Más recientes</SelectItem>
                 <SelectItem value="nameAsc">Nombre (A-Z)</SelectItem>
+                <SelectItem value="topRated">Mejor valorados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -482,7 +495,7 @@ export default function Emprendimientos() {
           {/* Fila 2 de filtros: contacto + toggles */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-3 items-center">
-              {/* NUEVO: tipo de contacto */}
+              {/* tipo de contacto */}
               <Select
                 value={contactFilter}
                 onValueChange={(v) => {
@@ -526,29 +539,41 @@ export default function Emprendimientos() {
                 {sortBy !== "newest" && (
                   <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
                     Orden:{" "}
-                    <b>{sortBy === "nameAsc" ? "Nombre (A-Z)" : "Recientes"}</b>
+                    <b>
+                      {sortBy === "nameAsc"
+                        ? "Nombre (A-Z)"
+                        : sortBy === "topRated"
+                        ? "Mejor valorados"
+                        : "Recientes"}
+                    </b>
                   </span>
                 )}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {/* Toggle Solo destacados */}
+              {/* Botón para ordenar por mejor valorados */}
               <button
-                onClick={() => setFeaturedOnly((v) => !v)}
+                onClick={() =>
+                  setSortBy((prev) =>
+                    prev === "topRated" ? "newest" : "topRated"
+                  )
+                }
                 className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border text-sm transition-colors ${
-                  featuredOnly
+                  sortBy === "topRated"
                     ? "bg-amber-50 text-amber-700 border-amber-200"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                 }`}
               >
                 <Star
                   className={`w-4 h-4 ${
-                    featuredOnly ? "text-amber-600" : "text-slate-500"
+                    sortBy === "topRated" ? "text-amber-600" : "text-slate-500"
                   }`}
-                  fill={featuredOnly ? "currentColor" : "none"}
+                  fill={sortBy === "topRated" ? "currentColor" : "none"}
                 />
-                {featuredOnly ? "Solo destacados" : "Ver destacados"}
+                {sortBy === "topRated"
+                  ? "Mejor valorados primero"
+                  : "Ver mejor valorados"}
               </button>
 
               {/* Toggle Solo favoritos */}
@@ -574,8 +599,7 @@ export default function Emprendimientos() {
                 sortBy !== "newest" ||
                 showFavOnly ||
                 typeFilter !== "all" ||
-                contactFilter !== "all" ||
-                featuredOnly) && (
+                contactFilter !== "all") && (
                 <Button variant="ghost" size="sm" onClick={clearAll}>
                   Limpiar todo
                 </Button>
@@ -703,7 +727,7 @@ export default function Emprendimientos() {
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-3">
                         <Badge className="bg-orange-100 text-orange-700">
-                          Emprendimiento
+                          Negocio
                         </Badge>
                         {business.featured && (
                           <Badge
@@ -718,6 +742,7 @@ export default function Emprendimientos() {
                       <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-orange-700 transition-colors line-clamp-1">
                         {business.title}
                       </h3>
+
                       {/* Rating con estrellas clickeables */}
                       <div className="mb-2">
                         {(() => {
@@ -773,10 +798,16 @@ export default function Emprendimientos() {
                                 </span>
                               </div>
 
-                              {userRating && (
+                              {userRating ? (
                                 <p className="text-[11px] text-slate-500 mt-0.5">
                                   Tu voto: {userRating}★
                                 </p>
+                              ) : (
+                                user && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5 italic">
+                                    Aún no votaste
+                                  </p>
+                                )
                               )}
                             </>
                           );
@@ -809,7 +840,7 @@ export default function Emprendimientos() {
                           </div>
                         )}
 
-                        {/* NUEVO: si querés mostrar rubro */}
+                        {/* rubro */}
                         {business.business_type && (
                           <div className="flex items-center text-xs uppercase tracking-wide text-orange-700/90">
                             <span className="px-2 py-0.5 rounded-full bg-orange-50 border border-orange-100">

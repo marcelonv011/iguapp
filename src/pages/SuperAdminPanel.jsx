@@ -123,12 +123,14 @@ export default function SuperAdminPanel() {
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({
-    title: "",
-    description: "",
-    category: "empleo",
-    price: "",
-    status: "pending",
-  });
+  title: "",
+  description: "",
+  category: "empleo",
+  price: "",
+  status: "pending",
+  featured: "no", // "si" | "no"
+});
+
 
   // --- Validar SuperAdmin ---
   useEffect(() => {
@@ -175,27 +177,31 @@ export default function SuperAdminPanel() {
   };
 
   const openEdit = (p) => {
-    setEditing(p);
-    setEditForm({
-      title: p.title || "",
-      description: p.description || "",
-      category: p.category || "empleo",
-      price: p.price ?? "",
-      status: p.status || "pending",
-    });
-    setEditOpen(true);
-  };
+  setEditing(p);
+  setEditForm({
+    title: p.title || "",
+    description: p.description || "",
+    category: p.category || "empleo",
+    price: p.price ?? "",
+    status: p.status || "pending",
+    featured: p.featured ? "si" : "no",
+  });
+  setEditOpen(true);
+};
+
 
   const saveEdit = async (e) => {
     e.preventDefault();
     if (!editing) return;
     const payload = {
-      title: editForm.title.trim(),
-      description: editForm.description.trim(),
-      category: editForm.category,
-      price: editForm.price === "" ? null : Number(editForm.price),
-      status: editForm.status,
-    };
+  title: editForm.title.trim(),
+  description: editForm.description.trim(),
+  category: editForm.category,
+  price: editForm.price === "" ? null : Number(editForm.price),
+  status: editForm.status,
+  featured: editForm.featured === "si",
+};
+
     await updateDoc(doc(db, "publications", editing.id), payload);
     toast.success("Publicación actualizada");
     setEditOpen(false);
@@ -731,56 +737,76 @@ export default function SuperAdminPanel() {
                 }
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-1">
-                <label className="text-sm font-medium">Categoría</label>
-                <Select
-                  value={editForm.category}
-                  onValueChange={(v) =>
-                    setEditForm({ ...editForm, category: v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="empleo">Empleo</SelectItem>
-                    <SelectItem value="alquiler">Alquiler</SelectItem>
-                    <SelectItem value="venta">Venta</SelectItem>
-                    <SelectItem value="emprendimiento">
-                      Emprendimiento
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-1">
-                <label className="text-sm font-medium">Precio</label>
-                <Input
-                  className="min-w-0"
-                  type="number"
-                  value={editForm.price ?? ""}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, price: e.target.value })
-                  }
-                />
-              </div>
-              <div className="md:col-span-1">
-                <label className="text-sm font-medium">Estado</label>
-                <Select
-                  value={editForm.status}
-                  onValueChange={(v) => setEditForm({ ...editForm, status: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">pending</SelectItem>
-                    <SelectItem value="active">active</SelectItem>
-                    <SelectItem value="inactive">inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+  <div className="md:col-span-1">
+    <label className="text-sm font-medium">Categoría</label>
+    <Select
+      value={editForm.category}
+      onValueChange={(v) =>
+        setEditForm({ ...editForm, category: v })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="empleo">Empleo</SelectItem>
+        <SelectItem value="alquiler">Alquiler</SelectItem>
+        <SelectItem value="venta">Venta</SelectItem>
+        <SelectItem value="emprendimiento">
+          Emprendimiento
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  <div className="md:col-span-1">
+    <label className="text-sm font-medium">Precio</label>
+    <Input
+      className="min-w-0"
+      type="number"
+      value={editForm.price ?? ""}
+      onChange={(e) =>
+        setEditForm({ ...editForm, price: e.target.value })
+      }
+    />
+  </div>
+
+  <div className="md:col-span-1">
+    <label className="text-sm font-medium">Estado</label>
+    <Select
+      value={editForm.status}
+      onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="pending">pending</SelectItem>
+        <SelectItem value="active">active</SelectItem>
+        <SelectItem value="inactive">inactive</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  <div className="md:col-span-1">
+    <label className="text-sm font-medium">Destacada en Home</label>
+    <Select
+      value={editForm.featured}
+      onValueChange={(v) =>
+        setEditForm({ ...editForm, featured: v })
+      }
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="no">No</SelectItem>
+        <SelectItem value="si">Sí, destacar</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+</div>
 
             <div className="flex justify-end gap-2 pt-3">
               <Button

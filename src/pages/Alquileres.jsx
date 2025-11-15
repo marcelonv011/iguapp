@@ -1,7 +1,7 @@
 // src/pages/Alquileres.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   collection,
   query as fsQuery,
@@ -12,6 +12,7 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  runTransaction,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -28,6 +29,7 @@ import {
   ImageOff,
   Plus,
   Heart,
+  Star,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -79,17 +81,45 @@ const getCityFromLocation = (loc) => {
 };
 
 export default function Alquileres() {
-  // ===== Favoritos / Auth =====
+  const queryClient = useQueryClient();
+
+  // ===== Favoritos / Auth / Ratings =====
   const [user, setUser] = useState(null);
   const [favIds, setFavIds] = useState(new Set());
   const [favBusy, setFavBusy] = useState({}); // id -> boolean
+  const [userRatings, setUserRatings] = useState({}); // { [publicationId]: number }
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
-      if (!u) return setFavIds(new Set());
-      const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
-      setFavIds(new Set(snap.docs.map((d) => d.id)));
+
+      if (!u) {
+        setFavIds(new Set());
+        setUserRatings({});
+        return;
+      }
+
+      try {
+        const favSnap = await getDocs(
+          collection(db, "users", u.uid, "favorites")
+        );
+        setFavIds(new Set(favSnap.docs.map((d) => d.id)));
+
+        // cargar ratings previos del usuario para alquileres
+        const ratingsSnap = await getDocs(
+          collection(db, "users", u.uid, "rental_ratings")
+        );
+        const map = {};
+        ratingsSnap.docs.forEach((d) => {
+          const data = d.data();
+          if (typeof data.value === "number") {
+            map[d.id] = data.value;
+          }
+        });
+        setUserRatings(map);
+      } catch (e) {
+        console.error("Error cargando favoritos/ratings:", e);
+      }
     });
     return () => unsub();
   }, []);
@@ -134,6 +164,68 @@ export default function Alquileres() {
     }
   };
 
+  const handleRate = async (property, value) => {
+    if (!user) {
+      toast.error("Iniciá sesión para calificar el alquiler");
+      return;
+    }
+    if (value < 1 || value > 5) return;
+
+    const pubId = property.id;
+    const pubRef = doc(db, "publications", pubId);
+    const userRatingRef = doc(db, "users", user.uid, "rental_ratings", pubId);
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const pubSnap = await tx.get(pubRef);
+        if (!pubSnap.exists()) {
+          throw new Error("Publicación no encontrada");
+        }
+        const data = pubSnap.data();
+
+        const userRatingSnap = await tx.get(userRatingRef);
+        const prevVal = userRatingSnap.exists()
+          ? userRatingSnap.data().value
+          : null;
+
+        let count = data.rating_count || 0;
+        let sum = data.rating_sum || 0;
+
+        if (prevVal == null) {
+          // voto nuevo
+          count += 1;
+          sum += value;
+        } else {
+          // actualización de voto anterior
+          sum = sum - prevVal + value;
+        }
+
+        const avg = count > 0 ? sum / count : 0;
+
+        tx.update(pubRef, {
+          rating_count: count,
+          rating_sum: sum,
+          rating: avg,
+        });
+
+        tx.set(userRatingRef, {
+          value,
+          publication_id: pubId,
+          updated_at: serverTimestamp(),
+        });
+      });
+
+      setUserRatings((prev) => ({ ...prev, [pubId]: value }));
+      toast.success(`Calificación enviada: ${value}★`);
+
+      // refrescar lista de alquileres
+      queryClient.invalidateQueries({ queryKey: ["alquileres"] });
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar tu voto");
+    }
+  };
+
   // ===== Filtros / estado =====
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
@@ -143,11 +235,10 @@ export default function Alquileres() {
   const [sortBy, setSortBy] = useState("newest"); // "newest" | "priceAsc" | "priceDesc"
   const [showFavOnly, setShowFavOnly] = useState(false);
 
-  // Paginación (¡un solo estado!)
+  // Paginación
   const [page, setPage] = useState(1);
   const pageSize = 9;
 
-  // Resetear página cuando cambian filtros/búsqueda/favoritos
   useEffect(() => {
     setPage(1);
   }, [
@@ -231,7 +322,6 @@ export default function Alquileres() {
     []
   );
 
-  // Ahora las opciones de ubicación son SOLO ciudades
   const locations = useMemo(() => {
     const set = new Set(
       publications.map((p) => getCityFromLocation(p.location)).filter(Boolean)
@@ -281,7 +371,7 @@ export default function Alquileres() {
       return new Date(b.created_date || 0) - new Date(a.created_date || 0);
     });
 
-    // Favoritos primero (sin romper el orden entre iguales)
+    // Favoritos primero
     list.sort(
       (a, b) => (favIds.has(b.id) ? 1 : 0) - (favIds.has(a.id) ? 1 : 0)
     );
@@ -589,7 +679,7 @@ export default function Alquileres() {
                     key={property.id}
                     className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-xl hover:border-purple-200 transition-all"
                   >
-                    {/* Botón Favorito (corazón) */}
+                    {/* Botón Favorito */}
                     <button
                       onClick={() => toggleFavorite(property)}
                       disabled={!!favBusy[property.id]}
@@ -664,6 +754,77 @@ export default function Alquileres() {
                       <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-purple-700 transition-colors line-clamp-1">
                         {property.title}
                       </h3>
+
+                      {/* Rating con estrellas clickeables */}
+                      <div className="mb-2">
+                        {(() => {
+                          const avgRating =
+                            typeof property.rating === "number" &&
+                            !isNaN(property.rating)
+                              ? property.rating
+                              : 0;
+                          const userRating = userRatings[property.id] || null;
+                          const roundedAvg = Math.round(avgRating);
+
+                          return (
+                            <>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: 5 }).map((_, i) => {
+                                  const starValue = i + 1;
+                                  const filled = starValue <= roundedAvg;
+                                  const isUserStar = userRating === starValue;
+
+                                  return (
+                                    <button
+                                      key={starValue}
+                                      type="button"
+                                      onClick={() =>
+                                        handleRate(property, starValue)
+                                      }
+                                      className="focus:outline-none"
+                                      title={
+                                        user
+                                          ? `Calificar con ${starValue} estrellas`
+                                          : "Iniciá sesión para calificar"
+                                      }
+                                    >
+                                      <Star
+                                        className={`w-4 h-4 transition-transform ${
+                                          filled
+                                            ? "text-amber-400 fill-amber-400"
+                                            : "text-slate-300"
+                                        } ${isUserStar ? "scale-110" : ""}`}
+                                      />
+                                    </button>
+                                  );
+                                })}
+
+                                <span className="ml-1 text-xs text-slate-500">
+                                  {avgRating > 0
+                                    ? `${avgRating.toFixed(1)}/5`
+                                    : "Sin valoraciones"}
+                                  {typeof property.rating_count === "number" &&
+                                    property.rating_count > 0 && (
+                                      <> ({property.rating_count})</>
+                                    )}
+                                </span>
+                              </div>
+
+                              {userRating ? (
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Tu voto: {userRating}★
+                                </p>
+                              ) : (
+                                user && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5 italic">
+                                    Aún no votaste
+                                  </p>
+                                )
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
 
                       <p className="text-slate-600 text-sm mb-4 line-clamp-2">
                         {property.description}
