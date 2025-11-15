@@ -333,19 +333,35 @@ export default function Emprendimientos() {
       }
 
       if (sortBy === "topRated") {
-        const ra = typeof a.rating === "number" ? a.rating : 0;
-        const rb = typeof b.rating === "number" ? b.rating : 0;
+        const aCount = typeof a.rating_count === "number" ? a.rating_count : 0;
+        const bCount = typeof b.rating_count === "number" ? b.rating_count : 0;
 
-        // Primero por rating promedio
-        if (rb !== ra) return rb - ra;
+        const aHasVotes = aCount > 0;
+        const bHasVotes = bCount > 0;
 
-        // Si empatan, más votos primero
-        const ca = typeof a.rating_count === "number" ? a.rating_count : 0;
-        const cb = typeof b.rating_count === "number" ? b.rating_count : 0;
-        if (cb !== ca) return cb - ca;
+        // 1) Siempre primero los que tienen votos
+        if (aHasVotes && !bHasVotes) return -1;
+        if (!aHasVotes && bHasVotes) return 1;
 
-        // Último criterio: más nuevo primero
-        return new Date(b.created_date || 0) - new Date(a.created_date || 0);
+        const aCreated = new Date(a.created_date || 0);
+        const bCreated = new Date(b.created_date || 0);
+
+        // 2) Ambos SIN votos -> ordenar solo por fecha (más nuevo primero)
+        if (!aHasVotes && !bHasVotes) {
+          return bCreated - aCreated;
+        }
+
+        // 3) Ambos CON votos -> ordenar por rating desc, luego cantidad de votos, luego fecha
+        const aRating =
+          typeof a.rating === "number" && !isNaN(a.rating) ? a.rating : 0;
+        const bRating =
+          typeof b.rating === "number" && !isNaN(b.rating) ? b.rating : 0;
+
+        if (bRating !== aRating) return bRating - aRating;
+
+        if (bCount !== aCount) return bCount - aCount;
+
+        return bCreated - aCreated;
       }
 
       // default: más recientes
@@ -609,7 +625,7 @@ export default function Emprendimientos() {
               <Link to="/admin?new=1&category=emprendimiento">
                 <Button className="gap-2">
                   <Plus className="w-4 h-4" />
-                  Publicar emprendimiento
+                  Publicar negocio
                 </Button>
               </Link>
             </div>
@@ -746,20 +762,32 @@ export default function Emprendimientos() {
                       {/* Rating con estrellas clickeables */}
                       <div className="mb-2">
                         {(() => {
+                          const ratingCount =
+                            typeof business.rating_count === "number"
+                              ? business.rating_count
+                              : 0;
+                          const hasVotes = ratingCount > 0;
+
+                          // si NO hay votos, ignoramos business.rating y lo tratamos como 0
                           const avgRating =
+                            hasVotes &&
                             typeof business.rating === "number" &&
                             !isNaN(business.rating)
                               ? business.rating
                               : 0;
+
                           const userRating = userRatings[business.id] || null;
-                          const roundedAvg = Math.round(avgRating);
+                          const roundedAvg = hasVotes
+                            ? Math.round(avgRating)
+                            : 0;
 
                           return (
                             <>
                               <div className="flex items-center gap-1">
                                 {Array.from({ length: 5 }).map((_, i) => {
                                   const starValue = i + 1;
-                                  const filled = starValue <= roundedAvg;
+                                  const filled =
+                                    hasVotes && starValue <= roundedAvg;
                                   const isUserStar = userRating === starValue;
 
                                   return (
@@ -788,13 +816,10 @@ export default function Emprendimientos() {
                                 })}
 
                                 <span className="ml-1 text-xs text-slate-500">
-                                  {avgRating > 0
+                                  {hasVotes
                                     ? `${avgRating.toFixed(1)}/5`
                                     : "Sin valoraciones"}
-                                  {typeof business.rating_count === "number" &&
-                                    business.rating_count > 0 && (
-                                      <> ({business.rating_count})</>
-                                    )}
+                                  {hasVotes && <> ({ratingCount})</>}
                                 </span>
                               </div>
 
@@ -851,8 +876,13 @@ export default function Emprendimientos() {
                       </div>
 
                       <div className="pt-4 border-t border-slate-200">
-                        <Button className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 shadow-sm">
-                          Ver más info
+                        <Button
+                          className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 shadow-sm"
+                          asChild
+                        >
+                          <Link to={`/emprendimientos/${business.id}`}>
+                            Ver más info
+                          </Link>
                         </Button>
                       </div>
                     </CardContent>
