@@ -14,8 +14,8 @@ import {
   Clock,
   Truck,
   XCircle,
-  MapPin,        // 👈 NUEVO
-  ExternalLink,  // 👈 NUEVO
+  MapPin, // 👈 NUEVO
+  ExternalLink, // 👈 NUEVO
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -84,7 +84,9 @@ export default function GestionarRestaurante() {
     name: "",
     description: "",
     category: "comida_rapida",
-    address: "",
+    address: "", // calle
+    address_number: "", // número
+    city: "Puerto Iguazú",
     phone: "",
     delivery_time: "30-45 min",
     min_order: 0,
@@ -251,14 +253,14 @@ export default function GestionarRestaurante() {
   //  Crear / actualizar restaurante
   // ==========================
   const handleCreateOrUpdateRestaurant = async () => {
-    if (!user) return;
-
     if (
       !restaurantForm.name ||
-      !restaurantForm.address ||
+      !restaurantForm.address || // calle
+      !restaurantForm.address_number || // número
+      !restaurantForm.city || // ciudad
       !restaurantForm.phone
     ) {
-      toast.error("Completá todos los campos obligatorios");
+      toast.error("Completá todos los campos obligatorios: Nombre, Categoría , Calle, Número, Ciudad y Teléfono");
       return;
     }
 
@@ -303,6 +305,8 @@ export default function GestionarRestaurante() {
         description: myRestaurant.description || "",
         category: myRestaurant.category || "comida_rapida",
         address: myRestaurant.address || "",
+        address_number: myRestaurant.address_number || "",
+        city: myRestaurant.city || "Puerto Iguazú",
         phone: myRestaurant.phone || "",
         delivery_time: myRestaurant.delivery_time || "30-45 min",
         min_order: myRestaurant.min_order || 0,
@@ -317,6 +321,8 @@ export default function GestionarRestaurante() {
         description: "",
         category: "comida_rapida",
         address: "",
+        address_number: "",
+        city: "Puerto Iguazú",
         phone: "",
         delivery_time: "30-45 min",
         min_order: 0,
@@ -466,6 +472,30 @@ export default function GestionarRestaurante() {
   const pendingOrdersCount = orders.filter(
     (o) => o.status === "pending"
   ).length;
+
+  // ====== Mapa para el restaurante (en el form) ======
+  const restaurantAddressForMap = (() => {
+    const street = (restaurantForm.address || "").trim();
+    const number = (restaurantForm.address_number || "").trim();
+    const city = (restaurantForm.city || "").trim();
+
+    const mainLine = [street, number].filter(Boolean).join(" ");
+    if (!mainLine) return "";
+
+    return city ? `${mainLine}, ${city}` : mainLine;
+  })();
+
+  const restaurantMapEmbedUrl = restaurantAddressForMap
+    ? `https://www.google.com/maps?q=${encodeURIComponent(
+        restaurantAddressForMap
+      )}&z=16&output=embed`
+    : "";
+
+  const restaurantMapLink = restaurantAddressForMap
+    ? `https://www.google.com/maps?q=${encodeURIComponent(
+        restaurantAddressForMap
+      )}`
+    : "";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-slate-100 py-8">
@@ -914,8 +944,14 @@ export default function GestionarRestaurante() {
                     </div>
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Dirección</p>
-                      <p className="font-semibold">{myRestaurant.address}</p>
+                      <p className="font-semibold">
+                        {myRestaurant.address}
+                        {myRestaurant.address_number &&
+                          ` ${myRestaurant.address_number}`}
+                        {myRestaurant.city && `, ${myRestaurant.city}`}
+                      </p>
                     </div>
+
                     <div>
                       <p className="text-sm text-slate-600 mb-1">
                         Tiempo de entrega
@@ -977,9 +1013,7 @@ export default function GestionarRestaurante() {
 
                   {myRestaurant.description && (
                     <div>
-                      <p className="text-sm text-slate-600 mb-1">
-                        Descripción
-                      </p>
+                      <p className="text-sm text-slate-600 mb-1">Descripción</p>
                       <p className="text-slate-800">
                         {myRestaurant.description}
                       </p>
@@ -1040,9 +1074,7 @@ export default function GestionarRestaurante() {
                     <SelectItem value="empanadas">Empanadas</SelectItem>
                     <SelectItem value="sushi">Sushi</SelectItem>
                     <SelectItem value="parrilla">Parrilla</SelectItem>
-                    <SelectItem value="comida_rapida">
-                      Comida Rápida
-                    </SelectItem>
+                    <SelectItem value="comida_rapida">Comida Rápida</SelectItem>
                     <SelectItem value="saludable">Saludable</SelectItem>
                     <SelectItem value="postres">Postres</SelectItem>
                     <SelectItem value="otro">Otro</SelectItem>
@@ -1081,7 +1113,7 @@ export default function GestionarRestaurante() {
                 />
               </div>
               <div>
-                <Label htmlFor="address">Dirección *</Label>
+                <Label htmlFor="address">Calle *</Label>
                 <Input
                   id="address"
                   value={restaurantForm.address}
@@ -1091,9 +1123,77 @@ export default function GestionarRestaurante() {
                       address: e.target.value,
                     }))
                   }
+                  placeholder="Ej: Av. Misiones"
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="address_number">Número *</Label>
+                <Input
+                  id="address_number"
+                  value={restaurantForm.address_number}
+                  onChange={(e) =>
+                    setRestaurantForm((prev) => ({
+                      ...prev,
+                      address_number: e.target.value,
+                    }))
+                  }
+                  placeholder="Ej: 234"
+                />
+              </div>
+              <div>
+                <Label htmlFor="city">Ciudad *</Label>
+
+                <Input
+                  id="city"
+                  value={restaurantForm.city}
+                  onChange={(e) =>
+                    setRestaurantForm((prev) => ({
+                      ...prev,
+                      city: e.target.value,
+                    }))
+                  }
+                  placeholder="Ej: Puerto Iguazú"
+                />
+              </div>
+            </div>
+
+            {restaurantAddressForMap && (
+              <div className="space-y-2">
+                <Label className="text-sm flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" />
+                  Mapa de la dirección
+                </Label>
+
+                <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 h-48">
+                  <iframe
+                    title="Mapa del restaurante"
+                    src={restaurantMapEmbedUrl}
+                    className="w-full h-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+
+                <a
+                  href={restaurantMapLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-xs text-blue-600 hover:underline"
+                >
+                  Abrir en Google Maps
+                  <ExternalLink className="w-3 h-3 ml-1" />
+                </a>
+
+                <p className="text-[11px] text-slate-400">
+                  El mapa se genera automáticamente según la dirección que
+                  escribas. Revisá que esté bien para evitar errores en el
+                  reparto.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-4">
               <div>
