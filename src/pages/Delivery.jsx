@@ -2,16 +2,28 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 
 // Firebase
-import { db } from "@/firebase"; // si tu archivo es otro, ajusta este import
+import { db, auth } from "@/firebase";
 import {
   collection,
   getDocs,
   query,
+  doc,
+  runTransaction,
+  serverTimestamp,
   orderBy,
+  where,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
-// UI & iconos (esto asume que ya tienes estos componentes como en otros archivos)
-import { UtensilsCrossed, Search, Star, Clock, DollarSign, Filter } from "lucide-react";
+// UI & iconos
+import {
+  UtensilsCrossed,
+  Search,
+  Star,
+  Clock,
+  DollarSign,
+  Filter,
+} from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Badge } from "@/ui/badge";
@@ -22,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
+import { toast } from "sonner";
 
 export default function Delivery() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -29,12 +42,49 @@ export default function Delivery() {
   const [restaurants, setRestaurants] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [user, setUser] = useState(null);
+  const [userRatings, setUserRatings] = useState({}); // { [restaurantId]: number }
+
+  // ==== Auth: saber si hay usuario logueado ====
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUser(u || null);
+      if (!u) {
+        setUserRatings({});
+        return;
+      }
+
+      // cargar calificaciones previas del usuario para restaurantes
+      try {
+        const snap = await getDocs(
+          collection(db, "users", u.uid, "restaurant_ratings")
+        );
+        const map = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (typeof data.value === "number") {
+            map[d.id] = data.value;
+          }
+        });
+        setUserRatings(map);
+      } catch (e) {
+        console.error("Error cargando ratings de restaurantes:", e);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
   // ==== Cargar restaurantes desde Firestore ====
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
-        const ref = collection(db, "restaurants"); // cambia el nombre de la colección si usas otro
-        const q = query(ref, orderBy("rating", "desc"));
+        const ref = collection(db, "restaurants");
+        const q = query(
+          ref,
+          where("status", "==", "approved"), // 👈 solo aprobados
+          orderBy("rating", "desc")
+        );
         const snapshot = await getDocs(q);
 
         const data = snapshot.docs.map((doc) => ({
@@ -53,6 +103,86 @@ export default function Delivery() {
     fetchRestaurants();
   }, []);
 
+  // ==== Handler para votar restaurante ====
+  const handleRate = async (restaurant, value) => {
+    if (!user) {
+      toast.error("Iniciá sesión para calificar el restaurante");
+      return;
+    }
+    if (value < 1 || value > 5) return;
+
+    const restId = restaurant.id;
+    const restRef = doc(db, "restaurants", restId);
+    const userRatingRef = doc(
+      db,
+      "users",
+      user.uid,
+      "restaurant_ratings",
+      restId
+    );
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const restSnap = await tx.get(restRef);
+        if (!restSnap.exists()) {
+          throw new Error("Restaurante no encontrado");
+        }
+        const data = restSnap.data();
+
+        const userRatingSnap = await tx.get(userRatingRef);
+        const prevVal = userRatingSnap.exists()
+          ? userRatingSnap.data().value
+          : null;
+
+        let count = data.rating_count || 0;
+        let sum = data.rating_sum || 0;
+
+        if (prevVal == null) {
+          // voto nuevo
+          count += 1;
+          sum += value;
+        } else {
+          // actualización de voto anterior
+          sum = sum - prevVal + value;
+        }
+
+        const avg = count > 0 ? sum / count : 0;
+
+        tx.update(restRef, {
+          rating_count: count,
+          rating_sum: sum,
+          rating: avg,
+        });
+
+        tx.set(userRatingRef, {
+          value,
+          restaurant_id: restId,
+          updated_at: serverTimestamp(),
+        });
+
+        // actualizar estado local para reflejar al toque
+        setRestaurants((prev) =>
+          prev.map((r) =>
+            r.id === restId
+              ? {
+                  ...r,
+                  rating_count: count,
+                  rating_sum: sum,
+                  rating: avg,
+                }
+              : r
+          )
+        );
+      });
+
+      setUserRatings((prev) => ({ ...prev, [restId]: value }));
+      toast.success(`Calificación enviada: ${value}★`);
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar tu voto");
+    }
+  };
+
   // ==== Filtros de búsqueda y categoría ====
   const filteredRestaurants = useMemo(() => {
     return restaurants.filter((restaurant) => {
@@ -64,8 +194,7 @@ export default function Delivery() {
         name.includes(search) || description.includes(search);
 
       const matchesCategory =
-        categoryFilter === "all" ||
-        restaurant.category === categoryFilter;
+        categoryFilter === "all" || restaurant.category === categoryFilter;
 
       return matchesSearch && matchesCategory;
     });
@@ -163,97 +292,160 @@ export default function Delivery() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredRestaurants.map((restaurant) => (
-              <Link
-                key={restaurant.id}
-                // Ajustá esta ruta al detalle que vayas a usar para el menú
-                to={`/delivery/${restaurant.id}`}
-              >
-                <Card className="hover:shadow-xl transition-all group overflow-hidden border-2 hover:border-red-200 h-full">
-                  {/* Imagen de portada */}
-                  <div className="h-40 bg-gradient-to-br from-red-400 to-orange-500 relative overflow-hidden">
-                    {restaurant.cover_image ? (
-                      <img
-                        src={restaurant.cover_image}
-                        alt={restaurant.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <UtensilsCrossed className="w-16 h-16 text-white opacity-50" />
-                      </div>
-                    )}
+            {filteredRestaurants.map((restaurant) => {
+              // === LÓGICA DE RATING COMO EN EMPRENDIMIENTOS ===
+              const ratingCount =
+                typeof restaurant.rating_count === "number"
+                  ? restaurant.rating_count
+                  : 0;
+              const hasVotes = ratingCount > 0;
 
-                    {/* Estado (abierto/cerrado) */}
-                    <div className="absolute top-3 right-3">
-                      <Badge className={restaurant.is_open ? "bg-green-500" : "bg-red-500"}>
-                        {restaurant.is_open ? "Abierto" : "Cerrado"}
-                      </Badge>
-                    </div>
+              const avgRating =
+                hasVotes &&
+                typeof restaurant.rating === "number" &&
+                !isNaN(restaurant.rating)
+                  ? restaurant.rating
+                  : 0;
 
-                    {/* Logo del restaurante */}
-                    {restaurant.logo_url && (
-                      <div className="absolute bottom-0 left-4 transform translate-y-1/2">
-                        <div className="w-16 h-16 rounded-full bg-white p-1 shadow-lg">
-                          <img
-                            src={restaurant.logo_url}
-                            alt={restaurant.name}
-                            className="w-full h-full object-cover rounded-full"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
+              const roundedAvg = hasVotes ? Math.round(avgRating) : 0;
+              const userRating = userRatings[restaurant.id] || null;
 
-                  <CardContent className="pt-10 pb-6 px-6">
-                    <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-red-600 transition-colors">
-                      {restaurant.name}
-                    </h3>
-
-                    {restaurant.description && (
-                      <p className="text-slate-600 text-sm mb-3 line-clamp-2">
-                        {restaurant.description}
-                      </p>
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center text-slate-600">
-                          <Clock className="w-4 h-4 mr-2" />
-                          {restaurant.delivery_time || "30-45 min"}
-                        </div>
-                        <div className="flex items-center text-yellow-500">
-                          <Star className="w-4 h-4 mr-1 fill-yellow-500" />
-                          {restaurant.rating || 5}
-                        </div>
-                      </div>
-
-                      {restaurant.min_order && (
-                        <div className="flex items-center text-slate-600 text-sm">
-                          <DollarSign className="w-4 h-4 mr-1" />
-                          Pedido mínimo: $
-                          {Number(restaurant.min_order).toLocaleString()}
+              return (
+                <Link key={restaurant.id} to={`/delivery/${restaurant.id}`}>
+                  <Card className="hover:shadow-xl transition-all group overflow-hidden border-2 hover:border-red-200 h-full">
+                    {/* Imagen de portada */}
+                    <div className="h-40 bg-gradient-to-br from-red-400 to-orange-500 relative">
+                      {restaurant.cover_image ? (
+                        <img
+                          src={restaurant.cover_image}
+                          alt={restaurant.name}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <UtensilsCrossed className="w-16 h-16 text-white opacity-50" />
                         </div>
                       )}
 
-                      {restaurant.delivery_fee !== undefined && (
-                        <div className="text-sm">
-                          {restaurant.delivery_fee === 0 ? (
-                            <span className="text-green-600 font-medium">
-                              Envío gratis
-                            </span>
-                          ) : (
-                            <span className="text-slate-600">
-                              Envío: ${restaurant.delivery_fee}
-                            </span>
-                          )}
+                      {/* Estado (abierto/cerrado) */}
+                      <div className="absolute top-3 right-3">
+                        <Badge
+                          className={
+                            restaurant.is_open ? "bg-green-500" : "bg-red-500"
+                          }
+                        >
+                          {restaurant.is_open ? "Abierto" : "Cerrado"}
+                        </Badge>
+                      </div>
+
+                      {/* Logo del restaurante más bonito */}
+                      {restaurant.logo_url && (
+                        <div className="absolute bottom-0 left-4 translate-y-1/2 z-20">
+                          <div className="w-20 h-20 rounded-full bg-white/90 p-1 shadow-xl ring-2 ring-red-500/70 flex items-center justify-center backdrop-blur-sm">
+                            <img
+                              src={restaurant.logo_url}
+                              alt={restaurant.name}
+                              className="w-full h-full object-cover rounded-full"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+
+                    <CardContent className="pt-10 pb-6 px-6">
+                      <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-red-600 transition-colors">
+                        {restaurant.name}
+                      </h3>
+
+                      {restaurant.description && (
+                        <p className="text-slate-600 text-sm mb-3 line-clamp-2">
+                          {restaurant.description}
+                        </p>
+                      )}
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center text-slate-600">
+                            <Clock className="w-4 h-4 mr-2" />
+                            {restaurant.delivery_time || "30-45 min"}
+                          </div>
+
+                          {/* === BLOQUE DE ESTRELLAS CLICKEABLES === */}
+                          <div className="flex flex-col items-end">
+                            <div className="flex items-center gap-1">
+                              {Array.from({ length: 5 }).map((_, i) => {
+                                const starValue = i + 1;
+                                const filled =
+                                  hasVotes && starValue <= roundedAvg;
+                                const isUserStar = userRating === starValue;
+
+                                return (
+                                  <button
+                                    key={starValue}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault(); // no navegar
+                                      e.stopPropagation(); // no disparar Link
+                                      handleRate(restaurant, starValue);
+                                    }}
+                                    className="focus:outline-none"
+                                    title={
+                                      user
+                                        ? `Calificar con ${starValue} estrellas`
+                                        : "Iniciá sesión para calificar"
+                                    }
+                                  >
+                                    <Star
+                                      className={`w-6 h-6 transition-transform ${
+                                        filled
+                                          ? "text-amber-400 fill-amber-400"
+                                          : "text-slate-300"
+                                      } ${isUserStar ? "scale-110" : ""}`}
+                                    />
+                                  </button>
+                                );
+                              })}
+                              <span className="ml-2 text-xs text-slate-500">
+                                {hasVotes
+                                  ? `${avgRating.toFixed(1)}/5 (${ratingCount})`
+                                  : "Sin valoraciones"}
+                              </span>
+                            </div>
+                            {userRating && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Tu voto: {userRating}★
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {restaurant.min_order && (
+                          <div className="flex items-center text-slate-600 text-sm">
+                            <DollarSign className="w-4 h-4 mr-1" />
+                            Pedido mínimo: $
+                            {Number(restaurant.min_order).toLocaleString()}
+                          </div>
+                        )}
+
+                        {restaurant.delivery_fee !== undefined && (
+                          <div className="text-sm">
+                            {restaurant.delivery_fee === 0 ? (
+                              <span className="text-green-600 font-medium">
+                                Envío gratis
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">
+                                Envío: ${restaurant.delivery_fee}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
 
             {filteredRestaurants.length === 0 && !isLoading && (
               <div className="col-span-full text-center py-12">

@@ -23,12 +23,7 @@ import { Textarea } from "@/ui/textarea";
 import { Label } from "@/ui/label";
 import { Badge } from "@/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -256,7 +251,11 @@ export default function GestionarRestaurante() {
   const handleCreateOrUpdateRestaurant = async () => {
     if (!user) return;
 
-    if (!restaurantForm.name || !restaurantForm.address || !restaurantForm.phone) {
+    if (
+      !restaurantForm.name ||
+      !restaurantForm.address ||
+      !restaurantForm.phone
+    ) {
       toast.error("Completá todos los campos obligatorios");
       return;
     }
@@ -270,6 +269,8 @@ export default function GestionarRestaurante() {
       owner_uid: user.uid,
       owner_email: user.email || "",
       rating: myRestaurant?.rating || 5,
+      // 👇 si es nuevo => pending, si ya existe respeta el status actual
+      status: myRestaurant?.status || "pending",
       updatedAt: serverTimestamp(),
       ...(myRestaurant ? {} : { createdAt: serverTimestamp() }),
     };
@@ -280,7 +281,9 @@ export default function GestionarRestaurante() {
 
       setMyRestaurant({ id: user.uid, ...data });
       toast.success(
-        myRestaurant ? "Restaurante actualizado" : "Restaurante creado exitosamente"
+        myRestaurant
+          ? "Restaurante actualizado"
+          : "Restaurante creado exitosamente"
       );
       setRestaurantDialogOpen(false);
     } catch (error) {
@@ -426,10 +429,18 @@ export default function GestionarRestaurante() {
 
   const getOrderStatusConfig = (status) => {
     const configs = {
-      pending: { label: "Pendiente", icon: AlertCircle, color: "bg-yellow-500" },
+      pending: {
+        label: "Pendiente",
+        icon: AlertCircle,
+        color: "bg-yellow-500",
+      },
       preparing: { label: "Preparando", icon: Clock, color: "bg-blue-500" },
       on_the_way: { label: "En camino", icon: Truck, color: "bg-purple-500" },
-      delivered: { label: "Entregado", icon: CheckCircle, color: "bg-green-500" },
+      delivered: {
+        label: "Entregado",
+        icon: CheckCircle,
+        color: "bg-green-500",
+      },
       cancelled: { label: "Cancelado", icon: XCircle, color: "bg-red-500" },
     };
     return configs[status] || configs.pending;
@@ -450,13 +461,55 @@ export default function GestionarRestaurante() {
     return null;
   }
 
-  const pendingOrdersCount = orders.filter((o) => o.status === "pending").length;
+  const pendingOrdersCount = orders.filter(
+    (o) => o.status === "pending"
+  ).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-slate-100 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
+          {/* Aviso de aprobación por superadmin */}
+          {!restaurantLoading && myRestaurant && (
+            <Card
+              className={
+                myRestaurant.status === "approved"
+                  ? "border-green-200 bg-green-50"
+                  : myRestaurant.status === "rejected"
+                  ? "border-red-200 bg-red-50"
+                  : "border-amber-200 bg-amber-50"
+              }
+            >
+              <CardContent className="p-4 flex items-start gap-3">
+                {myRestaurant.status === "approved" ? (
+                  <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                ) : myRestaurant.status === "rejected" ? (
+                  <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                ) : (
+                  <Clock className="w-5 h-5 text-amber-600 mt-0.5" />
+                )}
+
+                <div>
+                  <h3 className="font-semibold text-sm">
+                    {myRestaurant.status === "approved"
+                      ? "Tu restaurante ya fue aprobado"
+                      : myRestaurant.status === "rejected"
+                      ? "Tu restaurante fue rechazado"
+                      : "Tu restaurante está pendiente de aprobación"}
+                  </h3>
+                  <p className="text-xs mt-1 text-slate-700">
+                    {myRestaurant.status === "approved"
+                      ? "Tu restaurante ya aparece en la app de delivery para los clientes."
+                      : myRestaurant.status === "rejected"
+                      ? "Podés editar la información del restaurante y volver a guardar para que lo revisemos nuevamente."
+                      : "Nuestro equipo va a revisar tu restaurante. Mientras esté pendiente, los clientes todavía no lo ven en la app."}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-600 rounded-xl flex items-center justify-center">
@@ -466,7 +519,9 @@ export default function GestionarRestaurante() {
                 <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
                   {myRestaurant ? myRestaurant.name : "Mi Restaurante"}
                 </h1>
-                <p className="text-slate-600">Gestioná tu negocio de delivery</p>
+                <p className="text-slate-600">
+                  Gestioná tu negocio de delivery
+                </p>
               </div>
             </div>
             <Button
@@ -488,7 +543,8 @@ export default function GestionarRestaurante() {
                       Todavía no tenés un restaurante
                     </h3>
                     <p className="text-sm text-yellow-800">
-                      Hacé clic en "Crear Restaurante" para empezar a recibir pedidos
+                      Hacé clic en "Crear Restaurante" para empezar a recibir
+                      pedidos
                     </p>
                   </div>
                 </div>
@@ -504,7 +560,9 @@ export default function GestionarRestaurante() {
               <TabsTrigger value="orders">
                 Pedidos
                 {pendingOrdersCount > 0 && (
-                  <Badge className="ml-2 bg-red-500">{pendingOrdersCount}</Badge>
+                  <Badge className="ml-2 bg-red-500">
+                    {pendingOrdersCount}
+                  </Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="info">Info del Restaurante</TabsTrigger>
@@ -536,7 +594,8 @@ export default function GestionarRestaurante() {
                         No hay items en el menú todavía
                       </p>
                       <p className="text-sm text-slate-500 mt-2">
-                        Agregá productos para que los clientes puedan hacer pedidos
+                        Agregá productos para que los clientes puedan hacer
+                        pedidos
                       </p>
                     </div>
                   ) : (
@@ -566,7 +625,9 @@ export default function GestionarRestaurante() {
                               </div>
                               <Badge
                                 className={
-                                  item.available ? "bg-green-500" : "bg-slate-500"
+                                  item.available
+                                    ? "bg-green-500"
+                                    : "bg-slate-500"
                                 }
                               >
                                 {item.available
@@ -770,10 +831,7 @@ export default function GestionarRestaurante() {
                                       variant="outline"
                                       className="text-red-600 hover:bg-red-50"
                                       onClick={() =>
-                                        updateOrderStatus(
-                                          order.id,
-                                          "cancelled"
-                                        )
+                                        updateOrderStatus(order.id, "cancelled")
                                       }
                                       disabled={
                                         updatingOrderStatusId === order.id
@@ -806,9 +864,7 @@ export default function GestionarRestaurante() {
                       <p className="font-semibold">{myRestaurant.name}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-600 mb-1">
-                        Categoría
-                      </p>
+                      <p className="text-sm text-slate-600 mb-1">Categoría</p>
                       <p className="font-semibold">{myRestaurant.category}</p>
                     </div>
                     <div>
@@ -832,10 +888,7 @@ export default function GestionarRestaurante() {
                         Pedido mínimo
                       </p>
                       <p className="font-semibold">
-                        $
-                        {Number(
-                          myRestaurant.min_order || 0
-                        ).toLocaleString()}
+                        ${Number(myRestaurant.min_order || 0).toLocaleString()}
                       </p>
                     </div>
                     <div>
@@ -860,22 +913,37 @@ export default function GestionarRestaurante() {
                       </Badge>
                     </div>
                   </div>
+                  <div>
+                    <p className="text-sm text-slate-600 mb-1">
+                      Estado de aprobación
+                    </p>
+                    <Badge
+                      className={
+                        myRestaurant.status === "approved"
+                          ? "bg-green-500"
+                          : myRestaurant.status === "rejected"
+                          ? "bg-red-500"
+                          : "bg-amber-500"
+                      }
+                    >
+                      {myRestaurant.status === "approved"
+                        ? "Aprobado"
+                        : myRestaurant.status === "rejected"
+                        ? "Rechazado"
+                        : "Pendiente de aprobación"}
+                    </Badge>
+                  </div>
 
                   {myRestaurant.description && (
                     <div>
-                      <p className="text-sm text-slate-600 mb-1">
-                        Descripción
-                      </p>
+                      <p className="text-sm text-slate-600 mb-1">Descripción</p>
                       <p className="text-slate-800">
                         {myRestaurant.description}
                       </p>
                     </div>
                   )}
 
-                  <Button
-                    onClick={handleOpenRestaurantDialog}
-                    className="mt-4"
-                  >
+                  <Button onClick={handleOpenRestaurantDialog} className="mt-4">
                     <Edit className="w-4 h-4 mr-2" />
                     Editar Información
                   </Button>
@@ -929,9 +997,7 @@ export default function GestionarRestaurante() {
                     <SelectItem value="empanadas">Empanadas</SelectItem>
                     <SelectItem value="sushi">Sushi</SelectItem>
                     <SelectItem value="parrilla">Parrilla</SelectItem>
-                    <SelectItem value="comida_rapida">
-                      Comida Rápida
-                    </SelectItem>
+                    <SelectItem value="comida_rapida">Comida Rápida</SelectItem>
                     <SelectItem value="saludable">Saludable</SelectItem>
                     <SelectItem value="postres">Postres</SelectItem>
                     <SelectItem value="otro">Otro</SelectItem>
@@ -1046,9 +1112,7 @@ export default function GestionarRestaurante() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) =>
-                    handleImageUpload(e, "restaurant_logo_url")
-                  }
+                  onChange={(e) => handleImageUpload(e, "restaurant_logo_url")}
                   className="hidden"
                   id="logo-upload"
                 />
@@ -1056,9 +1120,7 @@ export default function GestionarRestaurante() {
                   type="button"
                   variant="outline"
                   className="w-full"
-                  onClick={() =>
-                    document.getElementById("logo-upload").click()
-                  }
+                  onClick={() => document.getElementById("logo-upload").click()}
                   disabled={uploading}
                 >
                   <Upload className="w-4 h-4 mr-2" />
@@ -1137,7 +1199,9 @@ export default function GestionarRestaurante() {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {editingMenuItem ? "Editar Item del Menú" : "Agregar Item al Menú"}
+              {editingMenuItem
+                ? "Editar Item del Menú"
+                : "Agregar Item al Menú"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

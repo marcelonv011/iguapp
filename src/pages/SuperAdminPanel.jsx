@@ -8,6 +8,11 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -25,6 +30,9 @@ import {
   Home as HomeIcon,
   Pencil,
   Trash2,
+  UtensilsCrossed,
+  Check,
+  X,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -109,6 +117,8 @@ export default function SuperAdminPanel() {
   const [publications, setPublications] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pendingRestaurants, setPendingRestaurants] = useState([]);
+  const [restaurants, setRestaurants] = useState([]);
 
   // filtros
   const [pubQuery, setPubQuery] = useState("");
@@ -123,14 +133,13 @@ export default function SuperAdminPanel() {
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({
-  title: "",
-  description: "",
-  category: "empleo",
-  price: "",
-  status: "pending",
-  featured: "no", // "si" | "no"
-});
-
+    title: "",
+    description: "",
+    category: "empleo",
+    price: "",
+    status: "pending",
+    featured: "no", // "si" | "no"
+  });
 
   // --- Validar SuperAdmin ---
   useEffect(() => {
@@ -153,17 +162,45 @@ export default function SuperAdminPanel() {
     return () => unsub();
   }, []);
 
-  // --- Cargar todo ---
+  // Escuchar restaurantes pendientes de aprobación
+  useEffect(() => {
+    const qRef = query(
+      collection(db, "restaurants"),
+      where("status", "==", "pending"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(
+      qRef,
+      (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setPendingRestaurants(arr);
+      },
+      (err) => {
+        console.error("Error cargando restaurantes pendientes:", err);
+        toast.error("Error cargando restaurantes pendientes");
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
   const loadAll = async () => {
     setLoading(true);
-    const [usersSnap, pubsSnap, subsSnap] = await Promise.all([
+    const [usersSnap, pubsSnap, subsSnap, restaurantsSnap] = await Promise.all([
       getDocs(collection(db, "users")),
       getDocs(collection(db, "publications")),
       getDocs(collection(db, "subscriptions")),
+      getDocs(collection(db, "restaurants")),
     ]);
+
     setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setPublications(pubsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setSubscriptions(subsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    setRestaurants(
+      restaurantsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    );
+
     setLoading(false);
   };
 
@@ -176,31 +213,69 @@ export default function SuperAdminPanel() {
     loadAll();
   };
 
-  const openEdit = (p) => {
-  setEditing(p);
-  setEditForm({
-    title: p.title || "",
-    description: p.description || "",
-    category: p.category || "empleo",
-    price: p.price ?? "",
-    status: p.status || "pending",
-    featured: p.featured ? "si" : "no",
-  });
-  setEditOpen(true);
-};
+  // --- Acciones restaurantes ---
+  const updateRestaurantStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, "restaurants", id), {
+        status,
+        updatedAt: serverTimestamp(),
+      });
 
+      toast.success(
+        status === "approved" ? "Restaurante aprobado" : "Restaurante rechazado"
+      );
+
+      // refrescamos la lista de restaurantes
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar el restaurante");
+    }
+  };
+
+  const deleteRestaurant = async (id) => {
+    if (
+      !confirm(
+        "¿Eliminar este restaurante? Esta acción eliminará el restaurante de la plataforma."
+      )
+    )
+      return;
+
+    try {
+      await deleteDoc(doc(db, "restaurants", id));
+      toast.success("Restaurante eliminado");
+      // vuelve a cargar la lista
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo eliminar el restaurante");
+    }
+  };
+
+  const openEdit = (p) => {
+    setEditing(p);
+    setEditForm({
+      title: p.title || "",
+      description: p.description || "",
+      category: p.category || "empleo",
+      price: p.price ?? "",
+      status: p.status || "pending",
+      featured: p.featured ? "si" : "no",
+    });
+    setEditOpen(true);
+  };
 
   const saveEdit = async (e) => {
     e.preventDefault();
     if (!editing) return;
     const payload = {
-  title: editForm.title.trim(),
-  description: editForm.description.trim(),
-  category: editForm.category,
-  price: editForm.price === "" ? null : Number(editForm.price),
-  status: editForm.status,
-  featured: editForm.featured === "si",
-};
+      title: editForm.title.trim(),
+      description: editForm.description.trim(),
+      category: editForm.category,
+      price: editForm.price === "" ? null : Number(editForm.price),
+      status: editForm.status,
+      featured: editForm.featured === "si",
+    };
 
     await updateDoc(doc(db, "publications", editing.id), payload);
     toast.success("Publicación actualizada");
@@ -399,6 +474,140 @@ export default function SuperAdminPanel() {
           />
         </div>
 
+        {/* Restaurantes pendientes de aprobación */}
+        <Card className="mb-8 rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UtensilsCrossed className="w-5 h-5" />
+              Restaurantes pendientes de aprobación
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pendingRestaurants.length === 0 ? (
+              <p className="text-slate-600 text-sm">
+                No hay restaurantes pendientes.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pendingRestaurants.map((r) => (
+                  <Card key={r.id} className="border-2">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <h3 className="font-bold text-lg">
+                            {r.name || "Sin nombre"}
+                          </h3>
+                          <p className="text-sm text-slate-600">
+                            {r.address || "Sin dirección"}
+                          </p>
+                          {r.owner_email && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              Propietario: {r.owner_email}
+                            </p>
+                          )}
+                        </div>
+                        <Badge className="bg-amber-500">Pendiente</Badge>
+                      </div>
+
+                      {r.description && (
+                        <p className="text-sm text-slate-700 line-clamp-3">
+                          {r.description}
+                        </p>
+                      )}
+
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 flex-1"
+                          onClick={() =>
+                            updateRestaurantStatus(r.id, "approved")
+                          }
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Aprobar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50 flex-1"
+                          onClick={() =>
+                            updateRestaurantStatus(r.id, "rejected")
+                          }
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          Rechazar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Restaurantes aprobados (con opción de borrar) */}
+        <Card className="mb-8 rounded-2xl shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UtensilsCrossed className="w-5 h-5" />
+              Restaurantes aprobados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {restaurants.filter((r) => r.status === "approved").length === 0 ? (
+              <p className="text-slate-600 text-sm">
+                No hay restaurantes aprobados todavía.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {restaurants
+                  .filter((r) => r.status === "approved")
+                  .map((r) => (
+                    <Card key={r.id} className="border">
+                      <CardContent className="p-4 space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <h3 className="font-bold text-lg">
+                              {r.name || "Sin nombre"}
+                            </h3>
+                            <p className="text-sm text-slate-600">
+                              {r.address || "Sin dirección"}
+                            </p>
+                            {r.owner_email && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Propietario: {r.owner_email}
+                              </p>
+                            )}
+                          </div>
+                          <Badge className="bg-emerald-500">Aprobado</Badge>
+                        </div>
+
+                        {r.description && (
+                          <p className="text-sm text-slate-700 line-clamp-3">
+                            {r.description}
+                          </p>
+                        )}
+
+                        <div className="flex gap-2 pt-2 justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => deleteRestaurant(r.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Eliminar
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Tabs */}
         <Tabs defaultValue="publications" className="space-y-6">
           <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
@@ -453,17 +662,28 @@ export default function SuperAdminPanel() {
                           <TableHeader className="sticky top-0 bg-white z-10">
                             <TableRow>
                               <TableHead className="w-[40%]">Título</TableHead>
-                              <TableHead className="hidden sm:table-cell">Categoría</TableHead>
-                              <TableHead className="hidden md:table-cell">Usuario</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Categoría
+                              </TableHead>
+                              <TableHead className="hidden md:table-cell">
+                                Usuario
+                              </TableHead>
                               <TableHead>Estado</TableHead>
-                              <TableHead className="w-40 sm:w-48">Acciones</TableHead>
+                              <TableHead className="w-40 sm:w-48">
+                                Acciones
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {filteredPublications.map((p) => (
-                              <TableRow key={p.id} className="hover:bg-slate-50/60">
+                              <TableRow
+                                key={p.id}
+                                className="hover:bg-slate-50/60"
+                              >
                                 <TableCell className="font-medium max-w-[280px] sm:max-w-none">
-                                  <div className="truncate" title={p.title}>{p.title}</div>
+                                  <div className="truncate" title={p.title}>
+                                    {p.title}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="hidden sm:table-cell">
                                   <Badge className="bg-slate-100 text-slate-700 border border-slate-200 capitalize">
@@ -471,7 +691,10 @@ export default function SuperAdminPanel() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="hidden md:table-cell text-sm">
-                                  <span className="truncate block max-w-[220px]" title={p.user_email || p.created_by || "—"}>
+                                  <span
+                                    className="truncate block max-w-[220px]"
+                                    title={p.user_email || p.created_by || "—"}
+                                  >
                                     {p.user_email || p.created_by || "—"}
                                   </span>
                                 </TableCell>
@@ -485,30 +708,50 @@ export default function SuperAdminPanel() {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => updatePublicationStatus(p.id, "active")}
+                                          onClick={() =>
+                                            updatePublicationStatus(
+                                              p.id,
+                                              "active"
+                                            )
+                                          }
                                         >
                                           <CheckCircle className="w-4 h-4 text-emerald-600" />
                                         </Button>
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          onClick={() => updatePublicationStatus(p.id, "inactive")}
+                                          onClick={() =>
+                                            updatePublicationStatus(
+                                              p.id,
+                                              "inactive"
+                                            )
+                                          }
                                         >
                                           <XCircle className="w-4 h-4 text-rose-600" />
                                         </Button>
                                       </>
                                     )}
-                                    <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => openEdit(p)}
+                                    >
                                       <Pencil className="w-4 h-4" />
                                     </Button>
-                                    <Button size="sm" variant="outline" onClick={() => deletePublication(p.id)}>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => deletePublication(p.id)}
+                                    >
                                       <Trash2 className="w-4 h-4 text-rose-600" />
                                     </Button>
                                     {p.images?.[0] && (
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => window.open(p.images[0], "_blank")}
+                                        onClick={() =>
+                                          window.open(p.images[0], "_blank")
+                                        }
                                       >
                                         <Eye className="w-4 h-4" />
                                       </Button>
@@ -559,7 +802,9 @@ export default function SuperAdminPanel() {
                             <TableRow>
                               <TableHead>Nombre</TableHead>
                               <TableHead>Email</TableHead>
-                              <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Teléfono
+                              </TableHead>
                               <TableHead>Rol</TableHead>
                               <TableHead className="w-48">Acciones</TableHead>
                             </TableRow>
@@ -567,14 +812,23 @@ export default function SuperAdminPanel() {
 
                           <TableBody>
                             {filteredUsers.map((u) => (
-                              <TableRow key={u.id} className="hover:bg-slate-50/60">
+                              <TableRow
+                                key={u.id}
+                                className="hover:bg-slate-50/60"
+                              >
                                 <TableCell className="font-medium">
-                                  <span className="truncate block max-w-[220px]" title={u.full_name || "—"}>
+                                  <span
+                                    className="truncate block max-w-[220px]"
+                                    title={u.full_name || "—"}
+                                  >
                                     {u.full_name || "—"}
                                   </span>
                                 </TableCell>
                                 <TableCell>
-                                  <span className="truncate block max-w-[260px]" title={u.email || "—"}>
+                                  <span
+                                    className="truncate block max-w-[260px]"
+                                    title={u.email || "—"}
+                                  >
                                     {u.email || "—"}
                                   </span>
                                 </TableCell>
@@ -595,7 +849,8 @@ export default function SuperAdminPanel() {
                                         Quitar Admin
                                       </Button>
                                     )}
-                                    {(!u.role_type || u.role_type === "usuario") && (
+                                    {(!u.role_type ||
+                                      u.role_type === "usuario") && (
                                       <Button
                                         size="sm"
                                         variant="outline"
@@ -650,15 +905,22 @@ export default function SuperAdminPanel() {
                             <TableRow>
                               <TableHead>Usuario</TableHead>
                               <TableHead>Monto</TableHead>
-                              <TableHead className="hidden sm:table-cell">Inicio</TableHead>
-                              <TableHead className="hidden sm:table-cell">Vencimiento</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Inicio
+                              </TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Vencimiento
+                              </TableHead>
                               <TableHead>Estado</TableHead>
                               <TableHead className="w-40">Acciones</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {subscriptions.map((s) => (
-                              <TableRow key={s.id} className="hover:bg-slate-50/60">
+                              <TableRow
+                                key={s.id}
+                                className="hover:bg-slate-50/60"
+                              >
                                 <TableCell>{s.user_email || "—"}</TableCell>
                                 <TableCell className="font-medium">
                                   ${Number(s.amount || 0).toLocaleString()}
@@ -678,7 +940,9 @@ export default function SuperAdminPanel() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => setSubscriptionStatus(s.id, "active")}
+                                        onClick={() =>
+                                          setSubscriptionStatus(s.id, "active")
+                                        }
                                       >
                                         Activar
                                       </Button>
@@ -687,7 +951,12 @@ export default function SuperAdminPanel() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => setSubscriptionStatus(s.id, "inactive")}
+                                        onClick={() =>
+                                          setSubscriptionStatus(
+                                            s.id,
+                                            "inactive"
+                                          )
+                                        }
                                       >
                                         Inactivar
                                       </Button>
@@ -738,75 +1007,75 @@ export default function SuperAdminPanel() {
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-  <div className="md:col-span-1">
-    <label className="text-sm font-medium">Categoría</label>
-    <Select
-      value={editForm.category}
-      onValueChange={(v) =>
-        setEditForm({ ...editForm, category: v })
-      }
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="empleo">Empleo</SelectItem>
-        <SelectItem value="alquiler">Alquiler</SelectItem>
-        <SelectItem value="venta">Venta</SelectItem>
-        <SelectItem value="emprendimiento">
-          Emprendimiento
-        </SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Categoría</label>
+                <Select
+                  value={editForm.category}
+                  onValueChange={(v) =>
+                    setEditForm({ ...editForm, category: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="empleo">Empleo</SelectItem>
+                    <SelectItem value="alquiler">Alquiler</SelectItem>
+                    <SelectItem value="venta">Venta</SelectItem>
+                    <SelectItem value="emprendimiento">
+                      Emprendimiento
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-  <div className="md:col-span-1">
-    <label className="text-sm font-medium">Precio</label>
-    <Input
-      className="min-w-0"
-      type="number"
-      value={editForm.price ?? ""}
-      onChange={(e) =>
-        setEditForm({ ...editForm, price: e.target.value })
-      }
-    />
-  </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Precio</label>
+                <Input
+                  className="min-w-0"
+                  type="number"
+                  value={editForm.price ?? ""}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, price: e.target.value })
+                  }
+                />
+              </div>
 
-  <div className="md:col-span-1">
-    <label className="text-sm font-medium">Estado</label>
-    <Select
-      value={editForm.status}
-      onValueChange={(v) => setEditForm({ ...editForm, status: v })}
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="pending">pending</SelectItem>
-        <SelectItem value="active">active</SelectItem>
-        <SelectItem value="inactive">inactive</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Estado</label>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">pending</SelectItem>
+                    <SelectItem value="active">active</SelectItem>
+                    <SelectItem value="inactive">inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-  <div className="md:col-span-1">
-    <label className="text-sm font-medium">Destacada en Home</label>
-    <Select
-      value={editForm.featured}
-      onValueChange={(v) =>
-        setEditForm({ ...editForm, featured: v })
-      }
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="no">No</SelectItem>
-        <SelectItem value="si">Sí, destacar</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
-</div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Destacada en Home</label>
+                <Select
+                  value={editForm.featured}
+                  onValueChange={(v) =>
+                    setEditForm({ ...editForm, featured: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="si">Sí, destacar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-2 pt-3">
               <Button

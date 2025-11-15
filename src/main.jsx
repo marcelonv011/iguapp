@@ -16,9 +16,9 @@ import SettingsProfile from "@/pages/SettingsProfile.jsx";
 import Empleos from "@/pages/Empleos.jsx";
 import JobDetails from "@/pages/JobDetails";
 import Alquileres from "@/pages/Alquileres";
-import AlquilerDetalle from "@/pages/AlquilerDetalle.jsx"; 
+import AlquilerDetalle from "@/pages/AlquilerDetalle.jsx";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import ScrollToTop from "@/components/ScrollToTop.jsx"; 
+import ScrollToTop from "@/components/ScrollToTop.jsx";
 import Ventas from "@/pages/Ventas.jsx";
 import VentaDetails from "@/pages/VentaDetails";
 import Emprendimientos from "@/pages/Emprendimientos";
@@ -50,18 +50,31 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/" element={<Home />} />
               <Route path="/empleos" element={<Empleos />} />
               <Route path="/alquileres" element={<Alquileres />} />
-              <Route path="/alquileres/:id" element={<AlquilerDetalle />} /> {/* 👈 NUEVA */}
+              <Route
+                path="/alquileres/:id"
+                element={<AlquilerDetalle />}
+              />{" "}
+              {/* 👈 NUEVA */}
               <Route path="/ventas" element={<Ventas />} />
               <Route path="/ventas/:id" element={<VentaDetails />} />
               <Route path="/emprendimientos" element={<Emprendimientos />} />
-              <Route path="/emprendimientos/:id" element={<EmprendimientoDetails />} />
+              <Route
+                path="/emprendimientos/:id"
+                element={<EmprendimientoDetails />}
+              />
               <Route path="/delivery" element={<Delivery />} />
-              <Route path="/mi-restaurante" element={<GestionarRestaurante />} />
+              <Route
+                path="/mi-restaurante"
+                element={
+                  <ProtectedRoute allowedRoles={["admin", "superadmin"]}>
+                    <GestionarRestaurante />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/login" element={<Login />} />
               <Route path="/registro" element={<Registro />} />
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
-
               {/* 🔒 Protegidas */}
               <Route
                 path="/admin"
@@ -79,9 +92,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                   </ProtectedRoute>
                 }
               />
-
               {/* 404 */}
-              <Route path="*" element={<div style={{ padding: 24 }}>Página no encontrada</div>} />
+              <Route
+                path="*"
+                element={
+                  <div style={{ padding: 24 }}>Página no encontrada</div>
+                }
+              />
             </Routes>
           </Layout>
         </BrowserRouter>
