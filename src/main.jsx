@@ -25,6 +25,7 @@ import Emprendimientos from "@/pages/Emprendimientos";
 import EmprendimientoDetails from "@/pages/EmprendimientoDetails";
 import Delivery from "@/pages/Delivery.jsx";
 import GestionarRestaurante from "@/pages/GestionarRestaurante";
+import RestaurantMenu from "@/pages/RestaurantMenu.jsx";
 
 import "./index.css";
 
@@ -63,6 +64,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                 element={<EmprendimientoDetails />}
               />
               <Route path="/delivery" element={<Delivery />} />
+              <Route path="/delivery/:restaurantId" element={<RestaurantMenu />} />
               <Route
                 path="/mi-restaurante"
                 element={

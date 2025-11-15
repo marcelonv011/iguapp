@@ -14,6 +14,8 @@ import {
   Clock,
   Truck,
   XCircle,
+  MapPin,        // 👈 NUEVO
+  ExternalLink,  // 👈 NUEVO
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -699,6 +701,17 @@ export default function GestionarRestaurante() {
                           ? order.createdAt.toDate()
                           : null;
 
+                        // 👇 MAPA a partir de order.map_link (mismo que en RestaurantMenu)
+                        const rawMapLink = order.map_link || "";
+                        let mapEmbedUrl = "";
+                        if (rawMapLink) {
+                          mapEmbedUrl = rawMapLink.includes("output=embed")
+                            ? rawMapLink
+                            : `${rawMapLink}${
+                                rawMapLink.includes("?") ? "&" : "?"
+                              }output=embed`;
+                        }
+
                         return (
                           <Card key={order.id} className="border-2">
                             <CardContent className="p-6">
@@ -771,6 +784,34 @@ export default function GestionarRestaurante() {
                                   </p>
                                 )}
                               </div>
+
+                              {/* 👇 Bloque de mapa si el cliente mandó ubicación */}
+                              {rawMapLink && (
+                                <div className="mb-4">
+                                  <p className="text-xs text-slate-600 mb-1 flex items-center gap-1.5">
+                                    <MapPin className="w-3 h-3" />
+                                    <span>Mapa de la entrega</span>
+                                  </p>
+                                  <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 h-48 mb-2">
+                                    <iframe
+                                      title={`Mapa pedido ${order.id}`}
+                                      src={mapEmbedUrl}
+                                      className="w-full h-full border-0"
+                                      loading="lazy"
+                                      referrerPolicy="no-referrer-when-downgrade"
+                                    />
+                                  </div>
+                                  <a
+                                    href={rawMapLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-xs text-blue-600 hover:underline"
+                                  >
+                                    Abrir en Google Maps
+                                    <ExternalLink className="w-3 h-3 ml-1" />
+                                  </a>
+                                </div>
+                              )}
 
                               {order.status !== "delivered" &&
                                 order.status !== "cancelled" && (
@@ -936,7 +977,9 @@ export default function GestionarRestaurante() {
 
                   {myRestaurant.description && (
                     <div>
-                      <p className="text-sm text-slate-600 mb-1">Descripción</p>
+                      <p className="text-sm text-slate-600 mb-1">
+                        Descripción
+                      </p>
                       <p className="text-slate-800">
                         {myRestaurant.description}
                       </p>
@@ -997,7 +1040,9 @@ export default function GestionarRestaurante() {
                     <SelectItem value="empanadas">Empanadas</SelectItem>
                     <SelectItem value="sushi">Sushi</SelectItem>
                     <SelectItem value="parrilla">Parrilla</SelectItem>
-                    <SelectItem value="comida_rapida">Comida Rápida</SelectItem>
+                    <SelectItem value="comida_rapida">
+                      Comida Rápida
+                    </SelectItem>
                     <SelectItem value="saludable">Saludable</SelectItem>
                     <SelectItem value="postres">Postres</SelectItem>
                     <SelectItem value="otro">Otro</SelectItem>
