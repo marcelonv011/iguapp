@@ -20,3 +20,4 @@ export async function uploadToCloudinary(file) {
   // data.secure_url = URL https definitiva
   return data.secure_url;
 }
+

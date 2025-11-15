@@ -11,7 +11,6 @@ import {
   UtensilsCrossed,
   Menu,
   X,
-  User,
   LogOut,
   Settings,
   Package,
@@ -31,10 +30,9 @@ import {
 
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { db, auth } from "@/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { Badge } from "@/ui/badge";
-import { onSnapshot } from "firebase/firestore"; // 👈 asegurate de importar
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -45,7 +43,6 @@ export default function Layout({ children }) {
   const [profile, setProfile] = useState(null);
 
   // === Cargar perfil desde Firestore ===
-
   useEffect(() => {
     if (!user) {
       setProfile(null);
@@ -250,7 +247,7 @@ export default function Layout({ children }) {
                     {(profile?.role_type === "admin" ||
                       profile?.role_type === "superadmin") && (
                       <>
-                        {/* RUTA CORRECTA: /admin */}
+                        {/* Panel de Admin */}
                         <DropdownMenuItem asChild>
                           <Link to="/admin">
                             <Settings className="w-4 h-4" />
@@ -258,8 +255,9 @@ export default function Layout({ children }) {
                           </Link>
                         </DropdownMenuItem>
 
+                        {/* Mi Restaurante -> ruta fija */}
                         <DropdownMenuItem asChild>
-                          <Link to={createPageUrl("GestionarRestaurante")}>
+                          <Link to="/mi-restaurante">
                             <ChefHat className="w-4 h-4" />
                             <span className="ml-2">Mi Restaurante</span>
                           </Link>
@@ -268,7 +266,6 @@ export default function Layout({ children }) {
                     )}
 
                     {profile?.role_type === "superadmin" && (
-                      // RUTA CORRECTA: /superadmin
                       <DropdownMenuItem asChild>
                         <Link to="/superadmin">
                           <Shield className="w-4 h-4" />
