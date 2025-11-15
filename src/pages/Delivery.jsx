@@ -23,6 +23,7 @@ import {
   Clock,
   DollarSign,
   Filter,
+  MapPin,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -44,6 +45,7 @@ export default function Delivery() {
 
   const [user, setUser] = useState(null);
   const [userRatings, setUserRatings] = useState({}); // { [restaurantId]: number }
+  const [cityFilter, setCityFilter] = useState("all"); // 👈 nuevo
 
   // ==== Auth: saber si hay usuario logueado ====
   useEffect(() => {
@@ -196,9 +198,12 @@ export default function Delivery() {
       const matchesCategory =
         categoryFilter === "all" || restaurant.category === categoryFilter;
 
-      return matchesSearch && matchesCategory;
+      const city = (restaurant.city || "").trim();
+      const matchesCity = cityFilter === "all" || city === cityFilter;
+
+      return matchesSearch && matchesCategory && matchesCity;
     });
-  }, [restaurants, searchTerm, categoryFilter]);
+  }, [restaurants, searchTerm, categoryFilter, cityFilter]);
 
   const categories = [
     { value: "pizza", label: "Pizza" },
@@ -211,6 +216,15 @@ export default function Delivery() {
     { value: "postres", label: "Postres" },
     { value: "otro", label: "Otro" },
   ];
+
+  const cities = useMemo(() => {
+    const set = new Set();
+    restaurants.forEach((r) => {
+      const city = (r.city || "").trim();
+      if (city) set.add(city);
+    });
+    return Array.from(set).sort();
+  }, [restaurants]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-slate-100 py-8">
@@ -233,7 +247,7 @@ export default function Delivery() {
 
           {/* Filtros */}
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -245,6 +259,8 @@ export default function Delivery() {
                   />
                 </div>
               </div>
+
+              {/* Filtro por categoría */}
               <Select
                 value={categoryFilter}
                 onValueChange={(value) => setCategoryFilter(value)}
@@ -258,6 +274,24 @@ export default function Delivery() {
                   {categories.map((cat) => (
                     <SelectItem key={cat.value} value={cat.value}>
                       {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Filtro por ciudad */}
+              <Select
+                value={cityFilter}
+                onValueChange={(value) => setCityFilter(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Ciudad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las ciudades</SelectItem>
+                  {cities.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -353,10 +387,19 @@ export default function Delivery() {
                     </div>
 
                     <CardContent className="pt-10 pb-6 px-6">
-                      <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-red-600 transition-colors">
+                      <h3 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-red-600 transition-colors">
                         {restaurant.name}
                       </h3>
 
+                      {/* Dirección + número + ciudad */}
+                      <p className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
+                        <MapPin className="w-3 h-3" />
+                        {restaurant.address || "Sin dirección"}
+                        {restaurant.address_number
+                          ? ` ${restaurant.address_number}`
+                          : ""}
+                        {restaurant.city ? `, ${restaurant.city}` : ""}
+                      </p>
                       {restaurant.description && (
                         <p className="text-slate-600 text-sm mb-3 line-clamp-2">
                           {restaurant.description}

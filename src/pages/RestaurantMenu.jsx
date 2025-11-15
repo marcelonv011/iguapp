@@ -545,7 +545,12 @@ export default function RestaurantMenu() {
                 <div className="flex flex-wrap items-center gap-3 mt-4 text-xs sm:text-sm text-white/90">
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-4 h-4" />
-                    <span>{restaurant.address}</span>
+                    <span>
+                      {restaurant.address}
+                      {restaurant.address_number &&
+                        ` ${restaurant.address_number}`}
+                      {restaurant.city && `, ${restaurant.city}`}
+                    </span>
                   </div>
                   {restaurant.phone && (
                     <div className="flex items-center gap-1.5">
