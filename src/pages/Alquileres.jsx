@@ -232,7 +232,7 @@ export default function Alquileres() {
   const [periodFilter, setPeriodFilter] = useState("all"); // "all" | "mes" | "dia"
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
-  const [sortBy, setSortBy] = useState("newest"); // "newest" | "priceAsc" | "priceDesc"
+  const [sortBy, setSortBy] = useState("newest"); // "newest" | "priceAsc" | "priceDesc" | "topRated"
   const [showFavOnly, setShowFavOnly] = useState(false);
 
   // Paginación
@@ -363,11 +363,38 @@ export default function Alquileres() {
         matchesFav
       );
     });
-
     // Orden primario
     list.sort((a, b) => {
-      if (sortBy === "priceAsc") return (a.price || 0) - (b.price || 0);
-      if (sortBy === "priceDesc") return (b.price || 0) - (a.price || 0);
+      if (sortBy === "priceAsc") {
+        return (a.price || 0) - (b.price || 0);
+      }
+
+      if (sortBy === "priceDesc") {
+        return (b.price || 0) - (a.price || 0);
+      }
+
+      if (sortBy === "topRated") {
+        const ra = typeof a.rating === "number" ? a.rating : 0;
+        const rb = typeof b.rating === "number" ? b.rating : 0;
+
+        const ca = typeof a.rating_count === "number" ? a.rating_count : 0;
+        const cb = typeof b.rating_count === "number" ? b.rating_count : 0;
+
+        // 1) los que NO tienen votos van al fondo
+        if (ca === 0 && cb > 0) return 1;
+        if (cb === 0 && ca > 0) return -1;
+
+        // 2) ambos tienen votos → ordenar por promedio
+        if (rb !== ra) return rb - ra;
+
+        // 3) si empatan, ordenar por cantidad de votos
+        if (cb !== ca) return cb - ca;
+
+        // 4) si sigue igual, más nuevo primero
+        return new Date(b.created_date || 0) - new Date(a.created_date || 0);
+      }
+
+      // default: más recientes
       return new Date(b.created_date || 0) - new Date(a.created_date || 0);
     });
 
@@ -552,6 +579,7 @@ export default function Alquileres() {
                 <SelectItem value="newest">Más recientes</SelectItem>
                 <SelectItem value="priceAsc">Precio: menor a mayor</SelectItem>
                 <SelectItem value="priceDesc">Precio: mayor a menor</SelectItem>
+                <SelectItem value="topRated">Mejor valorados</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -583,6 +611,30 @@ export default function Alquileres() {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Botón para ordenar por mejor valorados */}
+              <button
+                onClick={() =>
+                  setSortBy((prev) =>
+                    prev === "topRated" ? "newest" : "topRated"
+                  )
+                }
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  sortBy === "topRated"
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <Star
+                  className={`w-4 h-4 ${
+                    sortBy === "topRated" ? "text-amber-600" : "text-slate-500"
+                  }`}
+                  fill={sortBy === "topRated" ? "currentColor" : "none"}
+                />
+                {sortBy === "topRated"
+                  ? "Mejor valorados primero"
+                  : "Ver mejor valorados"}
+              </button>
+
               {/* Toggle Solo favoritos */}
               <button
                 onClick={() => setShowFavOnly((v) => !v)}
@@ -758,20 +810,32 @@ export default function Alquileres() {
                       {/* Rating con estrellas clickeables */}
                       <div className="mb-2">
                         {(() => {
+                          const ratingCount =
+                            typeof property.rating_count === "number"
+                              ? property.rating_count
+                              : 0;
+                          const hasVotes = ratingCount > 0;
+
+                          // si NO hay votos, ignoramos property.rating y lo tratamos como 0
                           const avgRating =
+                            hasVotes &&
                             typeof property.rating === "number" &&
                             !isNaN(property.rating)
                               ? property.rating
                               : 0;
+
                           const userRating = userRatings[property.id] || null;
-                          const roundedAvg = Math.round(avgRating);
+                          const roundedAvg = hasVotes
+                            ? Math.round(avgRating)
+                            : 0;
 
                           return (
                             <>
                               <div className="flex items-center gap-1">
                                 {Array.from({ length: 5 }).map((_, i) => {
                                   const starValue = i + 1;
-                                  const filled = starValue <= roundedAvg;
+                                  const filled =
+                                    hasVotes && starValue <= roundedAvg;
                                   const isUserStar = userRating === starValue;
 
                                   return (
@@ -800,13 +864,10 @@ export default function Alquileres() {
                                 })}
 
                                 <span className="ml-1 text-xs text-slate-500">
-                                  {avgRating > 0
+                                  {hasVotes
                                     ? `${avgRating.toFixed(1)}/5`
                                     : "Sin valoraciones"}
-                                  {typeof property.rating_count === "number" &&
-                                    property.rating_count > 0 && (
-                                      <> ({property.rating_count})</>
-                                    )}
+                                  {hasVotes && <> ({ratingCount})</>}
                                 </span>
                               </div>
 

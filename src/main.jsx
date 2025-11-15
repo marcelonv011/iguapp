@@ -23,6 +23,7 @@ import Ventas from "@/pages/Ventas.jsx";
 import VentaDetails from "@/pages/VentaDetails";
 import Emprendimientos from "@/pages/Emprendimientos";
 import EmprendimientoDetails from "@/pages/EmprendimientoDetails";
+import Delivery from "@/pages/Delivery.jsx";
 
 import "./index.css";
 
@@ -53,7 +54,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/ventas/:id" element={<VentaDetails />} />
               <Route path="/emprendimientos" element={<Emprendimientos />} />
               <Route path="/emprendimientos/:id" element={<EmprendimientoDetails />} />
-              <Route path="/delivery" element={<div>Delivery</div>} />
+              <Route path="/delivery" element={<Delivery />} />
               <Route path="/restaurant" element={<div>Restaurant</div>} />
               <Route path="/login" element={<Login />} />
               <Route path="/registro" element={<Registro />} />
