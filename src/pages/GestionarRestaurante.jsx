@@ -14,8 +14,8 @@ import {
   Clock,
   Truck,
   XCircle,
-  MapPin, // 👈 NUEVO
-  ExternalLink, // 👈 NUEVO
+  MapPin,
+  ExternalLink,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -78,6 +78,13 @@ export default function GestionarRestaurante() {
   const [savingRestaurant, setSavingRestaurant] = useState(false);
   const [savingMenuItem, setSavingMenuItem] = useState(false);
   const [updatingOrderStatusId, setUpdatingOrderStatusId] = useState(null);
+  const [ordersFilter, setOrdersFilter] = useState("all");
+
+  // fecha para filtrar pedidos (por defecto: hoy)
+  const [ordersDateFilter, setOrdersDateFilter] = useState(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  });
 
   // Restaurant form
   const [restaurantForm, setRestaurantForm] = useState({
@@ -253,6 +260,8 @@ export default function GestionarRestaurante() {
   //  Crear / actualizar restaurante
   // ==========================
   const handleCreateOrUpdateRestaurant = async () => {
+    if (!user) return;
+
     if (
       !restaurantForm.name ||
       !restaurantForm.address || // calle
@@ -260,7 +269,9 @@ export default function GestionarRestaurante() {
       !restaurantForm.city || // ciudad
       !restaurantForm.phone
     ) {
-      toast.error("Completá todos los campos obligatorios: Nombre, Categoría , Calle, Número, Ciudad y Teléfono");
+      toast.error(
+        "Completá todos los campos obligatorios: Nombre, Calle, Número, Ciudad y Teléfono"
+      );
       return;
     }
 
@@ -459,8 +470,11 @@ export default function GestionarRestaurante() {
   // ==========================
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-slate-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600" />
+          <p className="text-sm text-slate-600">Cargando tu panel...</p>
+        </div>
       </div>
     );
   }
@@ -469,9 +483,43 @@ export default function GestionarRestaurante() {
     return null;
   }
 
-  const pendingOrdersCount = orders.filter(
+  // Primero filtramos por fecha (por día)
+  const baseOrders =
+    ordersDateFilter && ordersDateFilter !== ""
+      ? orders.filter((o) => {
+          const ts = o.createdAt;
+          if (!ts?.toDate) return false;
+          const d = ts.toDate();
+          const dateStr = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+          return dateStr === ordersDateFilter;
+        })
+      : orders;
+
+  // Contadores por estado usando solo los pedidos de esa fecha
+  const pendingOrdersCount = baseOrders.filter(
     (o) => o.status === "pending"
   ).length;
+  const preparingOrdersCount = baseOrders.filter(
+    (o) => o.status === "preparing"
+  ).length;
+  const onTheWayOrdersCount = baseOrders.filter(
+    (o) => o.status === "on_the_way"
+  ).length;
+  const deliveredOrdersCount = baseOrders.filter(
+    (o) => o.status === "delivered"
+  ).length;
+  const cancelledOrdersCount = baseOrders.filter(
+    (o) => o.status === "cancelled"
+  ).length;
+
+  const totalOrdersCount = baseOrders.length;
+  const totalMenuItems = menuItems.length;
+
+  // Filtro por estado (Todos / Pendientes / En camino, etc.)
+  const filteredOrders =
+    ordersFilter === "all"
+      ? baseOrders
+      : baseOrders.filter((o) => o.status === ordersFilter);
 
   // ====== Mapa para el restaurante (en el form) ======
   const restaurantAddressForMap = (() => {
@@ -498,20 +546,19 @@ export default function GestionarRestaurante() {
     : "";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-slate-100 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-slate-100 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Header */}
-        <div className="mb-8">
-          {/* Aviso de aprobación por superadmin */}
+        <div className="mb-4">
           {!restaurantLoading && myRestaurant && (
             <Card
-              className={
+              className={`mb-4 border-l-4 ${
                 myRestaurant.status === "approved"
-                  ? "border-green-200 bg-green-50"
+                  ? "border-l-green-500 bg-green-50/80"
                   : myRestaurant.status === "rejected"
-                  ? "border-red-200 bg-red-50"
-                  : "border-amber-200 bg-amber-50"
-              }
+                  ? "border-l-red-500 bg-red-50/80"
+                  : "border-l-amber-500 bg-amber-50/80"
+              } shadow-sm`}
             >
               <CardContent className="p-4 flex items-start gap-3">
                 {myRestaurant.status === "approved" ? (
@@ -542,23 +589,24 @@ export default function GestionarRestaurante() {
             </Card>
           )}
 
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-600 rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20">
                 <UtensilsCrossed className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
+                <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
                   {myRestaurant ? myRestaurant.name : "Mi Restaurante"}
                 </h1>
-                <p className="text-slate-600">
-                  Gestioná tu negocio de delivery
+                <p className="text-slate-600 text-sm md:text-base">
+                  Panel para gestionar tu menú, tus pedidos y la información de
+                  tu negocio.
                 </p>
               </div>
             </div>
             <Button
               onClick={handleOpenRestaurantDialog}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30"
             >
               <Edit className="w-4 h-4 mr-2" />
               {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
@@ -566,7 +614,7 @@ export default function GestionarRestaurante() {
           </div>
 
           {!restaurantLoading && !myRestaurant && (
-            <Card className="border-yellow-300 bg-yellow-50">
+            <Card className="mt-6 border-dashed border-2 border-yellow-300 bg-yellow-50/70">
               <CardContent className="p-6">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
@@ -575,8 +623,9 @@ export default function GestionarRestaurante() {
                       Todavía no tenés un restaurante
                     </h3>
                     <p className="text-sm text-yellow-800">
-                      Hacé clic en "Crear Restaurante" para empezar a recibir
-                      pedidos
+                      Hacé clic en{" "}
+                      <span className="font-semibold">"Crear Restaurante"</span>{" "}
+                      para empezar a recibir pedidos.
                     </p>
                   </div>
                 </div>
@@ -585,72 +634,165 @@ export default function GestionarRestaurante() {
           )}
         </div>
 
+        {/* Mini dashboard de stats */}
+        {myRestaurant && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="shadow-sm border-none bg-white/80 backdrop-blur-sm">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
+                    Productos en el menú
+                  </p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {totalMenuItems}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                  <UtensilsCrossed className="w-5 h-5 text-red-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-none bg-white/80 backdrop-blur-sm">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
+                    Pedidos pendientes
+                  </p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {pendingOrdersCount}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-amber-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-none bg-white/80 backdrop-blur-sm">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-slate-500">
+                    Pedidos totales
+                  </p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {totalOrdersCount}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+                  <Package className="w-5 h-5 text-green-500" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {myRestaurant && (
           <Tabs defaultValue="menu" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="menu">Menú</TabsTrigger>
-              <TabsTrigger value="orders">
-                Pedidos
+            <TabsList className="w-full flex bg-slate-100/80 backdrop-blur-sm rounded-xl shadow-sm border p-1 gap-1">
+              <TabsTrigger
+                value="menu"
+                className="flex-1 rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-700
+                 data-[state=active]:bg-white
+                 data-[state=active]:shadow
+                 data-[state=active]:border
+                 data-[state=active]:border-red-500"
+              >
+                Menú
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="orders"
+                className="flex-1 rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-700
+                 data-[state=active]:bg-white
+                 data-[state=active]:shadow
+                 data-[state=active]:border
+                 data-[state=active]:border-red-500
+                 flex items-center justify-center gap-2"
+              >
+                <span>Pedidos</span>
+
                 {pendingOrdersCount > 0 && (
-                  <Badge className="ml-2 bg-red-500">
+                  <Badge className="bg-red-500 text-[10px] px-2 py-0.5">
                     {pendingOrdersCount}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="info">Info del Restaurante</TabsTrigger>
+
+              <TabsTrigger
+                value="info"
+                className="flex-1 rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-700
+                 data-[state=active]:bg-white
+                 data-[state=active]:shadow
+                 data-[state=active]:border
+                 data-[state=active]:border-red-500"
+              >
+                Info del Restaurante
+              </TabsTrigger>
             </TabsList>
 
             {/* Menú */}
             <TabsContent value="menu">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Menú del Restaurante</CardTitle>
-                    <Button
-                      onClick={() => {
-                        resetMenuItemForm();
-                        setMenuItemDialogOpen(true);
-                      }}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar Item
-                    </Button>
+              <Card className="shadow-md border-none bg-white/90 backdrop-blur-sm">
+                <CardHeader className="border-b pb-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg font-semibold">
+                      Menú del Restaurante
+                    </CardTitle>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Agregá, editá o desactivá productos del menú.
+                    </p>
                   </div>
+                  <Button
+                    onClick={() => {
+                      resetMenuItemForm();
+                      setMenuItemDialogOpen(true);
+                    }}
+                    className="bg-red-600 hover:bg-red-700 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Agregar Item
+                  </Button>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pt-4">
                   {menuItems.length === 0 ? (
                     <div className="text-center py-12">
                       <UtensilsCrossed className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                      <p className="text-slate-600">
+                      <p className="text-slate-700 font-medium">
                         No hay items en el menú todavía
                       </p>
                       <p className="text-sm text-slate-500 mt-2">
                         Agregá productos para que los clientes puedan hacer
-                        pedidos
+                        pedidos.
                       </p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {menuItems.map((item) => (
-                        <Card key={item.id} className="overflow-hidden">
+                        <Card
+                          key={item.id}
+                          className="overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg transition-shadow bg-white"
+                        >
                           {item.image_url && (
                             <div className="h-40 overflow-hidden">
                               <img
                                 src={item.image_url}
                                 alt={item.name}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-cover hover:scale-105 transition-transform"
                               />
                             </div>
                           )}
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-2">
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
                               <div className="flex-1">
-                                <h3 className="font-bold text-lg">
+                                <h3 className="font-bold text-lg text-slate-900">
                                   {item.name}
                                 </h3>
                                 {item.category && (
-                                  <Badge variant="outline" className="mt-1">
+                                  <Badge
+                                    variant="outline"
+                                    className="mt-1 text-xs"
+                                  >
                                     {item.category}
                                   </Badge>
                                 )}
@@ -658,7 +800,7 @@ export default function GestionarRestaurante() {
                               <Badge
                                 className={
                                   item.available
-                                    ? "bg-green-500"
+                                    ? "bg-emerald-500"
                                     : "bg-slate-500"
                                 }
                               >
@@ -669,12 +811,12 @@ export default function GestionarRestaurante() {
                             </div>
 
                             {item.description && (
-                              <p className="text-sm text-slate-600 mb-3 line-clamp-2">
+                              <p className="text-sm text-slate-600 line-clamp-2">
                                 {item.description}
                               </p>
                             )}
 
-                            <p className="text-2xl font-bold text-red-600 mb-3">
+                            <p className="text-2xl font-bold text-red-600">
                               ${Number(item.price).toLocaleString()}
                             </p>
 
@@ -708,30 +850,131 @@ export default function GestionarRestaurante() {
 
             {/* Pedidos */}
             <TabsContent value="orders">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pedidos Recibidos</CardTitle>
+              <Card className="shadow-md border-none bg-white/90 backdrop-blur-sm">
+                <CardHeader className="border-b pb-3">
+                  <CardTitle className="text-lg font-semibold">
+                    Pedidos Recibidos
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Actualizá el estado de los pedidos en tiempo real.
+                  </p>
                 </CardHeader>
-                <CardContent>
-                  {ordersLoading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600" />
+                <CardContent className="pt-4">
+                  {/* Filtro por fecha (por día) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div className="text-xs text-slate-500">
+                      <span className="font-semibold">Filtrar por día: </span>
+                      <span>
+                        {ordersDateFilter
+                          ? new Date(
+                              ordersDateFilter + "T00:00:00"
+                            ).toLocaleDateString()
+                          : "Todos los días"}
+                      </span>
                     </div>
-                  ) : orders.length === 0 ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={ordersDateFilter}
+                        onChange={(e) => setOrdersDateFilter(e.target.value)}
+                        className="h-8 w-40 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const d = new Date();
+                          setOrdersDateFilter(d.toISOString().slice(0, 10));
+                        }}
+                      >
+                        Hoy
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setOrdersDateFilter("")}
+                      >
+                        Ver todos
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Sub-menú de filtros por estado */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {[
+                      { key: "all", label: "Todos", count: totalOrdersCount },
+                      {
+                        key: "pending",
+                        label: "Pendientes",
+                        count: pendingOrdersCount,
+                      },
+                      {
+                        key: "preparing",
+                        label: "Preparando",
+                        count: preparingOrdersCount,
+                      },
+                      {
+                        key: "on_the_way",
+                        label: "En camino",
+                        count: onTheWayOrdersCount,
+                      },
+                      {
+                        key: "delivered",
+                        label: "Entregados",
+                        count: deliveredOrdersCount,
+                      },
+                      {
+                        key: "cancelled",
+                        label: "Cancelados",
+                        count: cancelledOrdersCount,
+                      },
+                    ].map((status) => (
+                      <button
+                        key={status.key}
+                        type="button"
+                        onClick={() => setOrdersFilter(status.key)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1 transition-colors ${
+                          ordersFilter === status.key
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span>{status.label}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/5">
+                          {status.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {ordersLoading ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600" />
+                      <p className="text-sm text-slate-500">
+                        Cargando pedidos...
+                      </p>
+                    </div>
+                  ) : baseOrders.length === 0 ? (
                     <div className="text-center py-12">
                       <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                      <p className="text-slate-600">No hay pedidos todavía</p>
+                      <p className="text-slate-700 font-medium">
+                        No hay pedidos todavía
+                      </p>
+                      <p className="text-sm text-slate-500 mt-2">
+                        Cuando los clientes hagan pedidos, van a aparecer acá.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {orders.map((order) => {
+                      {filteredOrders.map((order) => {
                         const statusConfig = getOrderStatusConfig(order.status);
                         const StatusIcon = statusConfig.icon;
                         const createdAt = order.createdAt?.toDate
                           ? order.createdAt.toDate()
                           : null;
 
-                        // 👇 MAPA a partir de order.map_link (mismo que en RestaurantMenu)
                         const rawMapLink = order.map_link || "";
                         let mapEmbedUrl = "";
                         if (rawMapLink) {
@@ -743,24 +986,27 @@ export default function GestionarRestaurante() {
                         }
 
                         return (
-                          <Card key={order.id} className="border-2">
-                            <CardContent className="p-6">
-                              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                          <Card
+                            key={order.id}
+                            className="border border-slate-100 shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <CardContent className="p-6 space-y-4">
+                              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                 <div>
-                                  <h3 className="font-bold text-lg">
+                                  <h3 className="font-bold text-lg text-slate-900">
                                     {order.customer_name}
                                   </h3>
                                   <p className="text-sm text-slate-600">
                                     {order.customer_phone}
                                   </p>
                                   {createdAt && (
-                                    <p className="text-sm text-slate-600 mt-1">
+                                    <p className="text-xs text-slate-500 mt-1">
                                       {createdAt.toLocaleString()}
                                     </p>
                                   )}
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
-                                  <Badge className={statusConfig.color}>
+                                  <Badge className={`${statusConfig.color}`}>
                                     <StatusIcon className="w-4 h-4 mr-1" />
                                     {statusConfig.label}
                                   </Badge>
@@ -770,15 +1016,15 @@ export default function GestionarRestaurante() {
                                 </div>
                               </div>
 
-                              <div className="bg-slate-50 rounded-lg p-4 mb-4">
-                                <h4 className="font-semibold mb-2">
-                                  Items del pedido:
+                              <div className="bg-slate-50 rounded-lg p-4">
+                                <h4 className="font-semibold mb-2 text-sm">
+                                  Items del pedido
                                 </h4>
-                                <div className="space-y-1">
+                                <div className="space-y-1 text-sm">
                                   {order.items?.map((item, idx) => (
                                     <div
                                       key={idx}
-                                      className="flex justify-between text-sm"
+                                      className="flex justify-between"
                                     >
                                       <span>
                                         {item.name} x{item.quantity}
@@ -795,12 +1041,12 @@ export default function GestionarRestaurante() {
                                 </div>
                               </div>
 
-                              <div className="space-y-2 mb-4">
-                                <p className="text-sm">
+                              <div className="space-y-1 text-sm">
+                                <p>
                                   <strong>Dirección:</strong>{" "}
                                   {order.delivery_address}
                                 </p>
-                                <p className="text-sm">
+                                <p>
                                   <strong>Pago:</strong>{" "}
                                   {order.payment_method === "cash"
                                     ? "Efectivo"
@@ -809,15 +1055,14 @@ export default function GestionarRestaurante() {
                                     : "Transferencia"}
                                 </p>
                                 {order.notes && (
-                                  <p className="text-sm">
+                                  <p>
                                     <strong>Notas:</strong> {order.notes}
                                   </p>
                                 )}
                               </div>
 
-                              {/* 👇 Bloque de mapa si el cliente mandó ubicación */}
                               {rawMapLink && (
-                                <div className="mb-4">
+                                <div className="mt-2">
                                   <p className="text-xs text-slate-600 mb-1 flex items-center gap-1.5">
                                     <MapPin className="w-3 h-3" />
                                     <span>Mapa de la entrega</span>
@@ -845,7 +1090,7 @@ export default function GestionarRestaurante() {
 
                               {order.status !== "delivered" &&
                                 order.status !== "cancelled" && (
-                                  <div className="flex flex-wrap gap-2">
+                                  <div className="flex flex-wrap gap-2 pt-2">
                                     {order.status === "pending" && (
                                       <Button
                                         size="sm"
@@ -924,27 +1169,33 @@ export default function GestionarRestaurante() {
 
             {/* Info restaurante */}
             <TabsContent value="info">
-              <Card>
-                <CardHeader>
+              <Card className="shadow-md border-none bg-white/90 backdrop-blur-sm">
+                <CardHeader className="border-b pb-3">
                   <CardTitle>Información del Restaurante</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6 pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Nombre</p>
-                      <p className="font-semibold">{myRestaurant.name}</p>
+                      <p className="font-semibold text-slate-900">
+                        {myRestaurant.name}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Categoría</p>
-                      <p className="font-semibold">{myRestaurant.category}</p>
+                      <p className="font-semibold text-slate-900">
+                        {myRestaurant.category}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Teléfono</p>
-                      <p className="font-semibold">{myRestaurant.phone}</p>
+                      <p className="font-semibold text-slate-900">
+                        {myRestaurant.phone}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Dirección</p>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-slate-900">
                         {myRestaurant.address}
                         {myRestaurant.address_number &&
                           ` ${myRestaurant.address_number}`}
@@ -956,7 +1207,7 @@ export default function GestionarRestaurante() {
                       <p className="text-sm text-slate-600 mb-1">
                         Tiempo de entrega
                       </p>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-slate-900">
                         {myRestaurant.delivery_time}
                       </p>
                     </div>
@@ -964,7 +1215,7 @@ export default function GestionarRestaurante() {
                       <p className="text-sm text-slate-600 mb-1">
                         Pedido mínimo
                       </p>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-slate-900">
                         ${Number(myRestaurant.min_order || 0).toLocaleString()}
                       </p>
                     </div>
@@ -972,7 +1223,7 @@ export default function GestionarRestaurante() {
                       <p className="text-sm text-slate-600 mb-1">
                         Costo de envío
                       </p>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-slate-900">
                         $
                         {Number(
                           myRestaurant.delivery_fee || 0
@@ -990,7 +1241,8 @@ export default function GestionarRestaurante() {
                       </Badge>
                     </div>
                   </div>
-                  <div>
+
+                  <div className="space-y-2">
                     <p className="text-sm text-slate-600 mb-1">
                       Estado de aprobación
                     </p>
@@ -1014,13 +1266,16 @@ export default function GestionarRestaurante() {
                   {myRestaurant.description && (
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Descripción</p>
-                      <p className="text-slate-800">
+                      <p className="text-slate-800 text-sm leading-relaxed">
                         {myRestaurant.description}
                       </p>
                     </div>
                   )}
 
-                  <Button onClick={handleOpenRestaurantDialog} className="mt-4">
+                  <Button
+                    onClick={handleOpenRestaurantDialog}
+                    className="mt-2 bg-red-600 hover:bg-red-700 shadow-sm"
+                  >
                     <Edit className="w-4 h-4 mr-2" />
                     Editar Información
                   </Button>
@@ -1145,7 +1400,6 @@ export default function GestionarRestaurante() {
               </div>
               <div>
                 <Label htmlFor="city">Ciudad *</Label>
-
                 <Input
                   id="city"
                   value={restaurantForm.city}
@@ -1275,7 +1529,7 @@ export default function GestionarRestaurante() {
                   <img
                     src={restaurantForm.logo_url}
                     alt="Logo"
-                    className="mt-2 w-20 h-20 object-cover rounded-lg"
+                    className="mt-2 w-20 h-20 object-cover rounded-lg border border-slate-200"
                   />
                 )}
               </div>
@@ -1309,7 +1563,7 @@ export default function GestionarRestaurante() {
                   <img
                     src={restaurantForm.cover_image}
                     alt="Portada"
-                    className="mt-2 w-full h-20 object-cover rounded-lg"
+                    className="mt-2 w-full h-20 object-cover rounded-lg border border-slate-200"
                   />
                 )}
               </div>
@@ -1325,6 +1579,7 @@ export default function GestionarRestaurante() {
               <Button
                 onClick={handleCreateOrUpdateRestaurant}
                 disabled={savingRestaurant}
+                className="bg-red-600 hover:bg-red-700"
               >
                 {myRestaurant ? "Actualizar" : "Crear Restaurante"}
               </Button>
@@ -1438,7 +1693,7 @@ export default function GestionarRestaurante() {
                 <img
                   src={menuItemForm.image_url}
                   alt="Preview"
-                  className="mt-2 w-full h-40 object-cover rounded-lg"
+                  className="mt-2 w-full h-40 object-cover rounded-lg border border-slate-200"
                 />
               )}
             </div>
@@ -1464,7 +1719,11 @@ export default function GestionarRestaurante() {
               >
                 Cancelar
               </Button>
-              <Button onClick={handleSaveMenuItem} disabled={savingMenuItem}>
+              <Button
+                onClick={handleSaveMenuItem}
+                disabled={savingMenuItem}
+                className="bg-red-600 hover:bg-red-700"
+              >
                 {editingMenuItem ? "Actualizar" : "Agregar"}
               </Button>
             </div>
