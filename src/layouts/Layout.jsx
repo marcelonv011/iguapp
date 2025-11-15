@@ -105,7 +105,7 @@ export default function Layout({ children }) {
     { name: "Alquileres", href: createPageUrl("Alquileres"), icon: Building2 },
     { name: "Ventas", href: createPageUrl("Ventas"), icon: ShoppingBag },
     {
-      name: "Emprendimientos",
+      name: "Negocios",
       href: createPageUrl("Emprendimientos"),
       icon: Store,
     },

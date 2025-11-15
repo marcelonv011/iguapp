@@ -538,6 +538,10 @@ export default function AdminPanel() {
     instagram: "",
     whatsapp: "",
     delivery: "no",
+    business_type: "servicios", // productos | servicios | comida
+    rating: "5", // string en el form, número al guardar
+    featured: "no", // "si" | "no"
+    open_hours: "", // 👈 NUEVO
   });
 
   const [mapOpen, setMapOpen] = useState(false);
@@ -775,6 +779,10 @@ export default function AdminPanel() {
       instagram: "",
       whatsapp: "",
       delivery: "no",
+      business_type: "servicios",
+      rating: "5",
+      featured: "no",
+      open_hours: "", // 👈 NUEVO
     });
     setImageFiles([]);
     setEditing(null);
@@ -894,6 +902,10 @@ export default function AdminPanel() {
         instagram: form.instagram || null,
         whatsapp: form.whatsapp || null,
         delivery: form.delivery,
+        business_type: form.business_type || null,
+        rating: form.rating ? Number(form.rating) : null,
+        featured: form.featured === "si",
+        open_hours: form.open_hours || null, // 👈 NUEVO
       });
     }
 
@@ -961,6 +973,13 @@ export default function AdminPanel() {
       instagram: p.instagram || "",
       whatsapp: p.whatsapp || "",
       delivery: p.delivery || "no",
+      business_type: p.business_type || "servicios",
+      rating:
+        typeof p.rating === "number" && !isNaN(p.rating)
+          ? String(p.rating)
+          : "5",
+      featured: p.featured ? "si" : "no",
+      open_hours: p.open_hours || "",
     });
     setImageFiles(
       Array.isArray(p.images)
@@ -1238,40 +1257,52 @@ export default function AdminPanel() {
                         )}
                       </div>
                       {/* Datos de contacto */}
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div>
-    <Label htmlFor="contact_phone">Teléfono / WhatsApp *</Label>
-    <Input
-      id="contact_phone"
-      type="tel"
-      placeholder="+54 9 3757 123456"
-      value={form.contact_phone}
-      onChange={(e) =>
-        setForm({ ...form, contact_phone: e.target.value })
-      }
-      required
-    />
-    <p className="text-xs text-slate-500 mt-1">
-      Número que se mostrará en la publicación para llamadas o WhatsApp.
-    </p>
-  </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="contact_phone">
+                            Teléfono / WhatsApp *
+                          </Label>
+                          <Input
+                            id="contact_phone"
+                            type="tel"
+                            placeholder="+54 9 3757 123456"
+                            value={form.contact_phone}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                contact_phone: e.target.value,
+                              })
+                            }
+                            required
+                          />
+                          <p className="text-xs text-slate-500 mt-1">
+                            Número que se mostrará en la publicación para
+                            llamadas o WhatsApp.
+                          </p>
+                        </div>
 
-  <div>
-    <Label htmlFor="contact_email">Email de contacto (opcional)</Label>
-    <Input
-      id="contact_email"
-      type="email"
-      placeholder={user?.email || "tu-email@ejemplo.com"}
-      value={form.contact_email}
-      onChange={(e) =>
-        setForm({ ...form, contact_email: e.target.value })
-      }
-    />
-    <p className="text-xs text-slate-500 mt-1">
-      Si lo dejás vacío se usará tu email de cuenta: {user?.email}
-    </p>
-  </div>
-</div>
+                        <div>
+                          <Label htmlFor="contact_email">
+                            Email de contacto (opcional)
+                          </Label>
+                          <Input
+                            id="contact_email"
+                            type="email"
+                            placeholder={user?.email || "tu-email@ejemplo.com"}
+                            value={form.contact_email}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                contact_email: e.target.value,
+                              })
+                            }
+                          />
+                          <p className="text-xs text-slate-500 mt-1">
+                            Si lo dejás vacío se usará tu email de cuenta:{" "}
+                            {user?.email}
+                          </p>
+                        </div>
+                      </div>
 
                       {/* Por categoría */}
                       {form.category === "empleo" && (
@@ -1589,7 +1620,26 @@ export default function AdminPanel() {
 
                       {form.category === "emprendimiento" && (
                         <div className="rounded-lg border p-4 space-y-4">
+                          {/* fila 1: links/contacto + horarios */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Horarios de atención</Label>
+                              <Input
+                                placeholder="Ej: Lun a Vie 9 a 20 hs · Sáb 9 a 13 hs"
+                                value={form.open_hours}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    open_hours: e.target.value,
+                                  })
+                                }
+                              />
+                              <p className="text-xs text-slate-500 mt-1">
+                                Podés escribir un texto libre con días y
+                                horarios.
+                              </p>
+                            </div>
+
                             <div>
                               <Label>Sitio web</Label>
                               <Input
@@ -1601,6 +1651,7 @@ export default function AdminPanel() {
                                 }
                               />
                             </div>
+
                             <div>
                               <Label>Instagram</Label>
                               <Input
@@ -1614,6 +1665,7 @@ export default function AdminPanel() {
                                 }
                               />
                             </div>
+
                             <div>
                               <Label>WhatsApp</Label>
                               <Input
@@ -1624,6 +1676,7 @@ export default function AdminPanel() {
                                 }
                               />
                             </div>
+
                             <div>
                               <Label>Delivery</Label>
                               <Select
@@ -1641,6 +1694,12 @@ export default function AdminPanel() {
                                 </SelectContent>
                               </Select>
                             </div>
+                          </div>
+
+                          {/* fila 2: tipo, rating, destacado */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* lo que ya tenías: business_type, rating, featured */}
+                            {/* ... */}
                           </div>
                         </div>
                       )}

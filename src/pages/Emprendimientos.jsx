@@ -1,0 +1,900 @@
+// src/pages/Emprendimientos.jsx
+import React, { useMemo, useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  collection,
+  query as fsQuery,
+  where,
+  orderBy,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  getDoc,
+  runTransaction,
+} from "firebase/firestore";
+import { db, auth } from "@/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { toast } from "sonner";
+import {
+  Store,
+  MapPin,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ImageOff,
+  Plus,
+  Heart,
+  ArrowUpDown,
+  Phone,
+  Clock,
+  Star,
+  MessageCircle,
+} from "lucide-react";
+
+import { Card, CardContent } from "@/ui/card";
+import { Input } from "@/ui/input";
+import { Button } from "@/ui/button";
+import { Badge } from "@/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/ui/select";
+
+// Helper: extraer ciudad de la ubicación
+const getCityFromLocation = (loc) => {
+  if (!loc) return "";
+  const parts = loc.split(",");
+  return parts[parts.length - 1].trim();
+};
+
+export default function Emprendimientos() {
+  const queryClient = useQueryClient();
+  // ===== Auth + Favoritos =====
+  const [user, setUser] = useState(null);
+  const [favIds, setFavIds] = useState(new Set());
+  const [favBusy, setFavBusy] = useState({});
+  const [userRatings, setUserRatings] = useState({}); // { [publicationId]: number }
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUser(u || null);
+      if (!u) {
+        setFavIds(new Set());
+        setUserRatings({});
+        return;
+      }
+
+      try {
+        const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
+        setFavIds(new Set(snap.docs.map((d) => d.id)));
+        // Cargar calificaciones previas del usuario
+        const ratingsSnap = await getDocs(
+          collection(db, "users", u.uid, "business_ratings")
+        );
+        const map = {};
+        ratingsSnap.docs.forEach((d) => {
+          const data = d.data();
+          if (typeof data.value === "number") {
+            map[d.id] = data.value;
+          }
+        });
+        setUserRatings(map);
+      } catch (e) {
+        console.error("Error cargando favoritos:", e);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  const toggleFavorite = async (pub) => {
+    if (!user) {
+      toast.error("Iniciá sesión para guardar favoritos");
+      return;
+    }
+    const id = pub.id;
+    setFavBusy((m) => ({ ...m, [id]: true }));
+
+    try {
+      const isFav = favIds.has(id);
+      const favRef = doc(db, "users", user.uid, "favorites", id);
+
+      if (isFav) {
+        await deleteDoc(favRef);
+        setFavIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        toast("Quitado de favoritos");
+      } else {
+        await setDoc(favRef, {
+          publication_id: id,
+          category: pub.category || "emprendimiento",
+          title: pub.title || "",
+          created_at: serverTimestamp(),
+        });
+        setFavIds((prev) => {
+          const next = new Set(prev);
+          next.add(id);
+          return next;
+        });
+        toast.success("Guardado en favoritos");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar el favorito");
+    } finally {
+      setFavBusy((m) => ({ ...m, [id]: false }));
+    }
+  };
+
+  const handleRate = async (business, value) => {
+    if (!user) {
+      toast.error("Iniciá sesión para calificar el emprendimiento");
+      return;
+    }
+    if (value < 1 || value > 5) return;
+
+    const pubId = business.id;
+    const pubRef = doc(db, "publications", pubId);
+    const userRatingRef = doc(db, "users", user.uid, "business_ratings", pubId);
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const pubSnap = await tx.get(pubRef);
+        if (!pubSnap.exists()) {
+          throw new Error("Publicación no encontrada");
+        }
+        const data = pubSnap.data();
+
+        const userRatingSnap = await tx.get(userRatingRef);
+        const prevVal = userRatingSnap.exists()
+          ? userRatingSnap.data().value
+          : null;
+
+        let count = data.rating_count || 0;
+        let sum = data.rating_sum || 0;
+
+        if (prevVal == null) {
+          // voto nuevo
+          count += 1;
+          sum += value;
+        } else {
+          // actualización de voto anterior
+          sum = sum - prevVal + value;
+        }
+
+        const avg = count > 0 ? sum / count : 0;
+
+        tx.update(pubRef, {
+          rating_count: count,
+          rating_sum: sum,
+          rating: avg,
+        });
+
+        tx.set(userRatingRef, {
+          value,
+          publication_id: pubId,
+          updated_at: serverTimestamp(),
+        });
+      });
+
+      setUserRatings((prev) => ({ ...prev, [pubId]: value }));
+      toast.success(`Calificación enviada: ${value}★`);
+
+      // refrescar lista de emprendimientos
+      queryClient.invalidateQueries({ queryKey: ["emprendimientos"] });
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo guardar tu voto");
+    }
+  };
+
+  // ===== Filtros / estado =====
+  const [searchTerm, setSearchTerm] = useState("");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest"); // "newest" | "nameAsc"
+  const [showFavOnly, setShowFavOnly] = useState(false);
+
+  // NUEVO: filtros extra
+  const [typeFilter, setTypeFilter] = useState("all"); // productos | servicios | comida
+  const [contactFilter, setContactFilter] = useState("all"); // all | whatsapp | instagram
+  const [featuredOnly, setFeaturedOnly] = useState(false); // solo destacados
+
+  // Paginación
+  const [page, setPage] = useState(1);
+  const pageSize = 9;
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    searchTerm,
+    locationFilter,
+    sortBy,
+    showFavOnly,
+    favIds,
+    typeFilter, // NUEVO
+    contactFilter, // NUEVO
+    featuredOnly, // NUEVO
+  ]);
+
+  // ===== Query Firestore =====
+  const {
+    data: publications = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["emprendimientos"],
+    queryFn: async () => {
+      const col = collection(db, "publications");
+
+      try {
+        const q1 = fsQuery(
+          col,
+          where("category", "==", "emprendimiento"),
+          where("status", "==", "active"),
+          orderBy("created_date", "desc")
+        );
+        const s1 = await getDocs(q1);
+        const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (rows1.length > 0) return rows1;
+      } catch (e) {
+        console.warn(
+          "[emprendimientos q1] Necesita índice o falló created_date/orderBy:",
+          e?.code,
+          e?.message
+        );
+      }
+
+      try {
+        const q2 = fsQuery(
+          col,
+          where("category", "==", "emprendimiento"),
+          where("status", "==", "active")
+        );
+        const s2 = await getDocs(q2);
+        const rows2 = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (rows2.length > 0) {
+          return rows2.sort(
+            (a, b) =>
+              new Date(b.created_date || 0) - new Date(a.created_date || 0)
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "[emprendimientos q2] Falla en where/lectura:",
+          e?.code,
+          e?.message
+        );
+      }
+
+      return [];
+    },
+  });
+
+  // Opciones de ubicación (ciudades)
+  const locations = useMemo(() => {
+    const set = new Set(
+      publications.map((p) => getCityFromLocation(p.location)).filter(Boolean)
+    );
+    return ["all", ...Array.from(set)];
+  }, [publications]);
+
+  // ===== Filtrado + orden + favoritos primero =====
+  const filtered = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    let list = publications.filter((p) => {
+      const matchesSearch =
+        !term ||
+        p?.title?.toLowerCase().includes(term) ||
+        p?.description?.toLowerCase().includes(term) ||
+        p?.location?.toLowerCase().includes(term);
+
+      const city = getCityFromLocation(p?.location);
+      const matchesLocation =
+        locationFilter === "all" || city === locationFilter;
+
+      const matchesFav = !showFavOnly || favIds.has(p.id);
+
+      // NUEVO: filtro por rubro / tipo de negocio
+      const matchesType =
+        typeFilter === "all" ||
+        (p.business_type || "").toLowerCase() === typeFilter;
+
+      // NUEVO: filtro por tipo de contacto
+      const hasWhatsapp = !!p.whatsapp || !!p.contact_whatsapp;
+      const hasInstagram = !!p.instagram || !!p.contact_instagram;
+
+      let matchesContact = true;
+      if (contactFilter === "whatsapp") matchesContact = hasWhatsapp;
+      if (contactFilter === "instagram") matchesContact = hasInstagram;
+
+      // NUEVO: solo destacados
+      const matchesFeatured = !featuredOnly || !!p.featured;
+
+      return (
+        matchesSearch &&
+        matchesLocation &&
+        matchesFav &&
+        matchesType &&
+        matchesContact &&
+        matchesFeatured
+      );
+    });
+
+    // Orden principal
+    list.sort((a, b) => {
+      if (sortBy === "nameAsc") {
+        return (a.title || "").localeCompare(b.title || "");
+      }
+      return new Date(b.created_date || 0) - new Date(a.created_date || 0);
+    });
+
+    // 2) luego favoritos primero
+    list.sort(
+      (a, b) => (favIds.has(b.id) ? 1 : 0) - (favIds.has(a.id) ? 1 : 0)
+    );
+
+    return list;
+  }, [
+    publications,
+    searchTerm,
+    locationFilter,
+    sortBy,
+    favIds,
+    showFavOnly,
+    typeFilter, // NUEVO
+    contactFilter, // NUEVO
+    featuredOnly, // NUEVO
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+
+  const pageItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  const clearAll = () => {
+    setSearchTerm("");
+    setLocationFilter("all");
+    setSortBy("newest");
+    setShowFavOnly(false);
+    setTypeFilter("all");
+    setContactFilter("all");
+    setFeaturedOnly(false);
+    setPage(1);
+  };
+
+  return (
+    <div className="relative min-h-screen bg-gradient-to-b from-orange-50 via-white to-slate-100">
+      {/* Blob decorativo */}
+      <div className="pointer-events-none absolute inset-x-0 -top-24 flex justify-center opacity-60">
+        <div className="h-56 w-[820px] bg-gradient-to-r from-orange-300 via-amber-200 to-rose-200 blur-3xl rounded-full" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-600 to-amber-500 rounded-2xl grid place-items-center shadow-lg shadow-orange-200/50">
+              <Store className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">
+                Emprendimientos
+              </h1>
+              <p className="text-slate-600">
+                Descubrí negocios y servicios locales en Iguazú y alrededores
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Buscador */}
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                <Input
+                  placeholder="Buscar por nombre, servicio o zona..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(1);
+                  }}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Ubicación */}
+            <Select
+              value={locationFilter}
+              onValueChange={(v) => {
+                setLocationFilter(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="bg-white">
+                <MapPin className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Ubicación" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((loc) => (
+                  <SelectItem key={loc} value={loc}>
+                    {loc === "all" ? "Todas las ubicaciones" : loc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* NUEVO: Rubro / tipo de negocio */}
+            <Select
+              value={typeFilter}
+              onValueChange={(v) => {
+                setTypeFilter(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="bg-white">
+                <Store className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Tipo de negocio" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los rubros</SelectItem>
+                <SelectItem value="productos">Productos</SelectItem>
+                <SelectItem value="servicios">Servicios</SelectItem>
+                <SelectItem value="comida">Comida / Gastronomía</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Orden */}
+            <Select
+              value={sortBy}
+              onValueChange={(v) => {
+                setSortBy(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="bg-white">
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Orden" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Más recientes</SelectItem>
+                <SelectItem value="nameAsc">Nombre (A-Z)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Fila 2 de filtros: contacto + toggles */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-3 items-center">
+              {/* NUEVO: tipo de contacto */}
+              <Select
+                value={contactFilter}
+                onValueChange={(v) => {
+                  setContactFilter(v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-52 bg-white">
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Contacto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Cualquier contacto</SelectItem>
+                  <SelectItem value="whatsapp">Con WhatsApp</SelectItem>
+                  <SelectItem value="instagram">Con Instagram</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Chips activos */}
+              <div className="flex flex-wrap gap-2">
+                {searchTerm && (
+                  <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
+                    Buscando: <b>{searchTerm}</b>
+                  </span>
+                )}
+                {locationFilter !== "all" && (
+                  <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
+                    Zona: <b>{locationFilter}</b>
+                  </span>
+                )}
+                {typeFilter !== "all" && (
+                  <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
+                    Rubro: <b>{typeFilter}</b>
+                  </span>
+                )}
+                {contactFilter !== "all" && (
+                  <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
+                    Contacto: <b>{contactFilter}</b>
+                  </span>
+                )}
+                {sortBy !== "newest" && (
+                  <span className="px-2.5 py-1 text-xs rounded-full bg-slate-100 border text-slate-700">
+                    Orden:{" "}
+                    <b>{sortBy === "nameAsc" ? "Nombre (A-Z)" : "Recientes"}</b>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Toggle Solo destacados */}
+              <button
+                onClick={() => setFeaturedOnly((v) => !v)}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border text-sm transition-colors ${
+                  featuredOnly
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <Star
+                  className={`w-4 h-4 ${
+                    featuredOnly ? "text-amber-600" : "text-slate-500"
+                  }`}
+                  fill={featuredOnly ? "currentColor" : "none"}
+                />
+                {featuredOnly ? "Solo destacados" : "Ver destacados"}
+              </button>
+
+              {/* Toggle Solo favoritos */}
+              <button
+                onClick={() => setShowFavOnly((v) => !v)}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border text-sm transition-colors ${
+                  showFavOnly
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <Heart
+                  className={`w-4 h-4 ${
+                    showFavOnly ? "text-rose-600" : "text-slate-500"
+                  }`}
+                  fill={showFavOnly ? "currentColor" : "none"}
+                />
+                {showFavOnly ? "Solo favoritos" : "Ver favoritos"}
+              </button>
+
+              {(locationFilter !== "all" ||
+                searchTerm ||
+                sortBy !== "newest" ||
+                showFavOnly ||
+                typeFilter !== "all" ||
+                contactFilter !== "all" ||
+                featuredOnly) && (
+                <Button variant="ghost" size="sm" onClick={clearAll}>
+                  Limpiar todo
+                </Button>
+              )}
+
+              {/* Publicar emprendimiento */}
+              <Link to="/admin?new=1&category=emprendimiento">
+                <Button className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Publicar emprendimiento
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Meta */}
+        {!isLoading && !error && (
+          <div className="mb-4 text-sm text-slate-600">
+            {filtered.length}{" "}
+            {filtered.length === 1 ? "resultado" : "resultados"}
+            {filtered.length > 0 && (
+              <>
+                {" "}
+                · Página {currentPage} de {totalPages}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Contenido */}
+        {error ? (
+          <div className="text-center py-16">
+            <p className="text-red-600 font-medium">
+              Hubo un error al cargar los datos.
+            </p>
+            <p className="text-slate-500 text-sm">
+              Intentá nuevamente en unos segundos.
+            </p>
+          </div>
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(9)].map((_, i) => (
+              <Card
+                key={i}
+                className="overflow-hidden animate-pulse rounded-2xl"
+              >
+                <div className="h-48 bg-slate-200" />
+                <CardContent className="p-6">
+                  <div className="h-6 bg-slate-200 rounded mb-2" />
+                  <div className="h-4 bg-slate-200 rounded w-4/5" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pageItems.map((business) => {
+                const cover = business.images && business.images[0];
+                const isFav = favIds.has(business.id);
+
+                return (
+                  <Card
+                    key={business.id}
+                    className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-xl hover:border-orange-200 transition-all"
+                  >
+                    {/* Botón Favorito */}
+                    <button
+                      onClick={() => toggleFavorite(business)}
+                      disabled={!!favBusy[business.id]}
+                      title={
+                        isFav ? "Quitar de favoritos" : "Agregar a favoritos"
+                      }
+                      className={`absolute right-3 top-3 z-10 rounded-full p-2 border bg-white/95 backdrop-blur shadow-sm transition-all
+                        ${
+                          isFav
+                            ? "border-rose-300 ring-2 ring-rose-200"
+                            : "border-slate-200 hover:bg-orange-50"
+                        }
+                        active:scale-95`}
+                    >
+                      <Heart
+                        className={`w-5 h-5 transition-colors ${
+                          isFav ? "text-rose-600" : "text-slate-600"
+                        }`}
+                        fill={isFav ? "currentColor" : "none"}
+                      />
+                    </button>
+
+                    {/* Ribbon FAVORITO */}
+                    {isFav && (
+                      <div className="absolute -right-10 top-6 rotate-45 z-[5]">
+                        <div className="bg-rose-600 text-white text-xs font-semibold px-12 py-1 shadow-sm">
+                          FAVORITO
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cover */}
+                    {cover ? (
+                      <div className="relative h-48 overflow-hidden bg-slate-50">
+                        <img
+                          src={cover}
+                          alt={business.title}
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          onError={(e) => {
+                            e.currentTarget.classList.add("hidden");
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) fallback.classList.remove("hidden");
+                          }}
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/15 to-transparent opacity-80" />
+                        <div className="hidden absolute inset-0 items-center justify-center text-slate-400 bg-slate-50">
+                          <ImageOff className="w-10 h-10" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-48 bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center">
+                        <Store className="w-16 h-16 text-white/80" />
+                      </div>
+                    )}
+
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <Badge className="bg-orange-100 text-orange-700">
+                          Emprendimiento
+                        </Badge>
+                        {business.featured && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-amber-300 text-amber-700 bg-amber-50 flex items-center gap-1"
+                          >
+                            <Star className="w-3 h-3" /> Destacado
+                          </Badge>
+                        )}
+                      </div>
+
+                      <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-orange-700 transition-colors line-clamp-1">
+                        {business.title}
+                      </h3>
+                      {/* Rating con estrellas clickeables */}
+                      <div className="mb-2">
+                        {(() => {
+                          const avgRating =
+                            typeof business.rating === "number" &&
+                            !isNaN(business.rating)
+                              ? business.rating
+                              : 0;
+                          const userRating = userRatings[business.id] || null;
+                          const roundedAvg = Math.round(avgRating);
+
+                          return (
+                            <>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: 5 }).map((_, i) => {
+                                  const starValue = i + 1;
+                                  const filled = starValue <= roundedAvg;
+                                  const isUserStar = userRating === starValue;
+
+                                  return (
+                                    <button
+                                      key={starValue}
+                                      type="button"
+                                      onClick={() =>
+                                        handleRate(business, starValue)
+                                      }
+                                      className="focus:outline-none"
+                                      title={
+                                        user
+                                          ? `Calificar con ${starValue} estrellas`
+                                          : "Iniciá sesión para calificar"
+                                      }
+                                    >
+                                      <Star
+                                        className={`w-4 h-4 transition-transform ${
+                                          filled
+                                            ? "text-amber-400 fill-amber-400"
+                                            : "text-slate-300"
+                                        } ${isUserStar ? "scale-110" : ""}`}
+                                      />
+                                    </button>
+                                  );
+                                })}
+
+                                <span className="ml-1 text-xs text-slate-500">
+                                  {avgRating > 0
+                                    ? `${avgRating.toFixed(1)}/5`
+                                    : "Sin valoraciones"}
+                                  {typeof business.rating_count === "number" &&
+                                    business.rating_count > 0 && (
+                                      <> ({business.rating_count})</>
+                                    )}
+                                </span>
+                              </div>
+
+                              {userRating && (
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Tu voto: {userRating}★
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <p className="text-slate-600 text-sm mb-4 line-clamp-3">
+                        {business.description}
+                      </p>
+
+                      <div className="space-y-2 text-sm text-slate-600 mb-5">
+                        {business.location && (
+                          <div className="flex items-center">
+                            <MapPin className="w-4 h-4 mr-2 text-slate-400" />
+                            {business.location}
+                          </div>
+                        )}
+
+                        {business.contact_phone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-2 text-slate-400" />
+                            {business.contact_phone}
+                          </div>
+                        )}
+
+                        {business.open_hours && (
+                          <div className="flex items-center">
+                            <Clock className="w-4 h-4 mr-2 text-slate-400" />
+                            {business.open_hours}
+                          </div>
+                        )}
+
+                        {/* NUEVO: si querés mostrar rubro */}
+                        {business.business_type && (
+                          <div className="flex items-center text-xs uppercase tracking-wide text-orange-700/90">
+                            <span className="px-2 py-0.5 rounded-full bg-orange-50 border border-orange-100">
+                              {business.business_type}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-200">
+                        <Button className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 shadow-sm">
+                          Ver más info
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {filtered.length === 0 && (
+                <div className="col-span-full text-center py-16 rounded-2xl border bg-white/70 backdrop-blur-sm">
+                  <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                  <p className="text-slate-700 text-lg">
+                    No se encontraron emprendimientos
+                  </p>
+                  <p className="text-slate-500 text-sm">
+                    Probá limpiando filtros o cambiando los términos de
+                    búsqueda.
+                  </p>
+                  <div className="mt-6">
+                    <Link to="/admin?new=1&category=emprendimiento">
+                      <Button className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        Publicar emprendimiento
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Paginación */}
+            {filtered.length > pageSize && (
+              <div className="flex items-center justify-center gap-2 mt-8">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  disabled={currentPage === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .slice(
+                    Math.max(0, Math.min(currentPage - 3, totalPages - 6)),
+                    Math.max(6, Math.min(totalPages, currentPage + 3))
+                  )
+                  .map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={`px-3 py-2 rounded-full text-sm border transition-colors ${
+                        n === currentPage
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : "bg-white hover:bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
