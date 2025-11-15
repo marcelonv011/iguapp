@@ -275,7 +275,7 @@ export default function Layout({ children }) {
                     )}
 
                     <DropdownMenuItem asChild>
-                      <Link to={createPageUrl("MisPedidos")}>
+                      <Link to="/mis-pedidos">
                         <Package className="w-4 h-4" />
                         <span className="ml-2">Mis Pedidos</span>
                       </Link>

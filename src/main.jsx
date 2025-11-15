@@ -26,6 +26,7 @@ import EmprendimientoDetails from "@/pages/EmprendimientoDetails";
 import Delivery from "@/pages/Delivery.jsx";
 import GestionarRestaurante from "@/pages/GestionarRestaurante";
 import RestaurantMenu from "@/pages/RestaurantMenu.jsx";
+import MisPedidos from "@/pages/MisPedidos";
 
 import "./index.css";
 
@@ -73,6 +74,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                   </ProtectedRoute>
                 }
               />
+              <Route path="/mis-pedidos" element={<MisPedidos />} />
               <Route path="/login" element={<Login />} />
               <Route path="/registro" element={<Registro />} />
               <Route path="/configuracion" element={<SettingsProfile />} />

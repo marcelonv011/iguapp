@@ -394,7 +394,9 @@ export default function RestaurantMenu() {
       toast.success(
         "¡Pedido realizado con éxito! El restaurante fue notificado."
       );
-      navigate(createPageUrl("MisPedidos"));
+
+      // 👇 Ir directo a MisPedidos
+      navigate("/mis-pedidos");
     } catch (error) {
       console.error("Error creando pedido:", error);
       toast.error("No se pudo crear el pedido. Intentá nuevamente.");

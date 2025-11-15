@@ -80,6 +80,11 @@ export default function GestionarRestaurante() {
   const [updatingOrderStatusId, setUpdatingOrderStatusId] = useState(null);
   const [ordersFilter, setOrdersFilter] = useState("all");
 
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [orderIdFilter, setOrderIdFilter] = useState("");
+
   // fecha para filtrar pedidos (por defecto: hoy)
   const [ordersDateFilter, setOrdersDateFilter] = useState(() => {
     const d = new Date();
@@ -430,11 +435,12 @@ export default function GestionarRestaurante() {
   // ==========================
   //  Actualizar estado de pedido
   // ==========================
-  const updateOrderStatus = async (orderId, status) => {
+  const updateOrderStatus = async (orderId, status, extraData = {}) => {
     setUpdatingOrderStatusId(orderId);
     try {
       await updateDoc(doc(db, "orders", orderId), {
         status,
+        ...extraData, // 👈 acá se mete motivo, quién canceló, etc.
         updatedAt: serverTimestamp(),
       });
       toast.success("Estado del pedido actualizado");
@@ -516,10 +522,20 @@ export default function GestionarRestaurante() {
   const totalMenuItems = menuItems.length;
 
   // Filtro por estado (Todos / Pendientes / En camino, etc.)
-  const filteredOrders =
+  const filteredOrdersByStatus =
     ordersFilter === "all"
       ? baseOrders
       : baseOrders.filter((o) => o.status === ordersFilter);
+
+  // Filtro adicional por ID de pedido
+  const filteredOrders =
+    orderIdFilter.trim() === ""
+      ? filteredOrdersByStatus
+      : filteredOrdersByStatus.filter((o) =>
+          (o.id || "")
+            .toLowerCase()
+            .includes(orderIdFilter.trim().toLowerCase())
+        );
 
   // ====== Mapa para el restaurante (en el form) ======
   const restaurantAddressForMap = (() => {
@@ -901,6 +917,33 @@ export default function GestionarRestaurante() {
                     </div>
                   </div>
 
+                  {/* Filtro por ID de pedido */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                    <p className="text-xs text-slate-500">
+                      Buscar por{" "}
+                      <span className="font-semibold">ID de pedido</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        value={orderIdFilter}
+                        onChange={(e) => setOrderIdFilter(e.target.value)}
+                        placeholder="Ej: abc123..."
+                        className="h-8 w-48 text-xs"
+                      />
+                      {orderIdFilter && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setOrderIdFilter("")}
+                        >
+                          Limpiar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Sub-menú de filtros por estado */}
                   <div className="flex flex-wrap gap-2 mb-4">
                     {[
@@ -984,6 +1027,8 @@ export default function GestionarRestaurante() {
                                 rawMapLink.includes("?") ? "&" : "?"
                               }output=embed`;
                         }
+                        const isDelivered = order.status === "delivered";
+                        const isCustomerConfirmed = !!order.customer_confirmed;
 
                         return (
                           <Card
@@ -1010,6 +1055,13 @@ export default function GestionarRestaurante() {
                                     <StatusIcon className="w-4 h-4 mr-1" />
                                     {statusConfig.label}
                                   </Badge>
+
+                                  {isDelivered && isCustomerConfirmed && (
+                                    <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                      Confirmado por el cliente ✅
+                                    </span>
+                                  )}
+
                                   <p className="text-2xl font-bold text-slate-900">
                                     ${Number(order.total).toLocaleString()}
                                   </p>
@@ -1059,6 +1111,13 @@ export default function GestionarRestaurante() {
                                     <strong>Notas:</strong> {order.notes}
                                   </p>
                                 )}
+                                {order.status === "cancelled" &&
+                                  order.cancel_reason && (
+                                    <p className="text-xs text-red-600 mt-1">
+                                      <strong>Motivo de cancelación:</strong>{" "}
+                                      {order.cancel_reason}
+                                    </p>
+                                  )}
                               </div>
 
                               {rawMapLink && (
@@ -1146,9 +1205,11 @@ export default function GestionarRestaurante() {
                                       size="sm"
                                       variant="outline"
                                       className="text-red-600 hover:bg-red-50"
-                                      onClick={() =>
-                                        updateOrderStatus(order.id, "cancelled")
-                                      }
+                                      onClick={() => {
+                                        setOrderToCancel(order);
+                                        setCancelReason("");
+                                        setCancelDialogOpen(true);
+                                      }}
                                       disabled={
                                         updatingOrderStatusId === order.id
                                       }
@@ -1582,6 +1643,77 @@ export default function GestionarRestaurante() {
                 className="bg-red-600 hover:bg-red-700"
               >
                 {myRestaurant ? "Actualizar" : "Crear Restaurante"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Dialog motivo de cancelación */}
+      <Dialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => {
+          setCancelDialogOpen(open);
+          if (!open) {
+            setCancelReason("");
+            setOrderToCancel(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar pedido</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 mt-2">
+            <p className="text-sm text-slate-600">
+              Este motivo se le va a mostrar al cliente en su pantalla de
+              pedidos.
+            </p>
+
+            <div>
+              <Label htmlFor="cancel_reason">Motivo de la cancelación *</Label>
+              <Textarea
+                id="cancel_reason"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ej: El producto está agotado, hubo un problema con el envío, etc."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCancelDialogOpen(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+              >
+                Volver
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700"
+                disabled={
+                  !cancelReason.trim() ||
+                  !orderToCancel ||
+                  updatingOrderStatusId === orderToCancel?.id
+                }
+                onClick={async () => {
+                  if (!orderToCancel || !cancelReason.trim()) return;
+
+                  await updateOrderStatus(orderToCancel.id, "cancelled", {
+                    cancel_reason: cancelReason.trim(),
+                    cancelled_by: "restaurant",
+                  });
+
+                  setCancelDialogOpen(false);
+                  setCancelReason("");
+                  setOrderToCancel(null);
+                }}
+              >
+                Confirmar cancelación
               </Button>
             </div>
           </div>
