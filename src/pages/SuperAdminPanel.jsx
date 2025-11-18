@@ -33,6 +33,7 @@ import {
   UtensilsCrossed,
   Check,
   X,
+  Flag,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -119,10 +120,14 @@ export default function SuperAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [pendingRestaurants, setPendingRestaurants] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
+  const [reports, setReports] = useState([]);
 
   // filtros
   const [pubQuery, setPubQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
+  const [reportQuery, setReportQuery] = useState("");
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
 
   // filtro ingresos (mes/año)
   const today = useMemo(() => new Date(), []);
@@ -187,12 +192,14 @@ export default function SuperAdminPanel() {
 
   const loadAll = async () => {
     setLoading(true);
-    const [usersSnap, pubsSnap, subsSnap, restaurantsSnap] = await Promise.all([
-      getDocs(collection(db, "users")),
-      getDocs(collection(db, "publications")),
-      getDocs(collection(db, "subscriptions")),
-      getDocs(collection(db, "restaurants")),
-    ]);
+    const [usersSnap, pubsSnap, subsSnap, restaurantsSnap, reportsSnap] =
+      await Promise.all([
+        getDocs(collection(db, "users")),
+        getDocs(collection(db, "publications")),
+        getDocs(collection(db, "subscriptions")),
+        getDocs(collection(db, "restaurants")),
+        getDocs(collection(db, "reports")),
+      ]);
 
     setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setPublications(pubsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -200,6 +207,7 @@ export default function SuperAdminPanel() {
     setRestaurants(
       restaurantsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     );
+    setReports(reportsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
     setLoading(false);
   };
@@ -307,6 +315,22 @@ export default function SuperAdminPanel() {
     loadAll();
   };
 
+  // --- Acciones reportes ---
+  const setReportStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, "reports", id), { status });
+      toast.success(
+        status === "closed"
+          ? "Reporte marcado como resuelto"
+          : "Estado de reporte actualizado"
+      );
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar el reporte");
+    }
+  };
+
   // --- Derivados (KPIs + filtros) ---
   const kpis = useMemo(() => {
     const totalUsers = users.length;
@@ -365,6 +389,34 @@ export default function SuperAdminPanel() {
         (u.role_type || "usuario").toLowerCase().includes(q)
     );
   }, [users, userQuery]);
+
+  const filteredReports = useMemo(() => {
+    const q = reportQuery.toLowerCase().trim();
+    const fromDate = reportFrom ? new Date(reportFrom + "T00:00:00") : null;
+    const toDateLimit = reportTo ? new Date(reportTo + "T23:59:59") : null;
+
+    return reports.filter((r) => {
+      const title = (r.publication_title || "").toLowerCase();
+      const owner = (r.owner_email || "").toLowerCase();
+      const reporter = (r.reporter_email || "").toLowerCase();
+      const comment = (r.comment || "").toLowerCase();
+      const status = (r.status || "").toLowerCase();
+
+      const matchesSearch =
+        !q ||
+        title.includes(q) ||
+        owner.includes(q) ||
+        reporter.includes(q) ||
+        comment.includes(q) ||
+        status.includes(q);
+
+      const d = toDate(r.created_at); 
+      const matchesFrom = !fromDate || (d && d >= fromDate);
+      const matchesTo = !toDateLimit || (d && d <= toDateLimit);
+
+      return matchesSearch && matchesFrom && matchesTo;
+    });
+  }, [reports, reportQuery, reportFrom, reportTo]);
 
   if (loading) {
     return (
@@ -610,7 +662,7 @@ export default function SuperAdminPanel() {
 
         {/* Tabs */}
         <Tabs defaultValue="publications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200">
             <TabsTrigger value="publications">
               Publicaciones
               <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
@@ -629,6 +681,12 @@ export default function SuperAdminPanel() {
                 {subscriptions.length}
               </span>
             </TabsTrigger>
+            <TabsTrigger value="reports">
+              Reportes
+              <span className="ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100">
+                {reports.length}
+              </span>
+            </TabsTrigger>
           </TabsList>
 
           {/* === Publicaciones === */}
@@ -638,14 +696,44 @@ export default function SuperAdminPanel() {
                 <CardTitle>Gestión de Publicaciones</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                    placeholder="Buscar por título, categoría, usuario o estado…"
-                    value={pubQuery}
-                    onChange={(e) => setPubQuery(e.target.value)}
-                  />
+                {/* Filtros de fecha + buscador */}
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Desde
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
+                      value={reportFrom}
+                      onChange={(e) => setReportFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Hasta
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
+                      value={reportTo}
+                      onChange={(e) => setReportTo(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-[2] relative">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Buscar
+                    </label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                        placeholder="Publicación, email, estado o comentario…"
+                        value={reportQuery}
+                        onChange={(e) => setReportQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {filteredPublications.length === 0 ? (
@@ -962,6 +1050,115 @@ export default function SuperAdminPanel() {
                                       </Button>
                                     )}
                                   </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          {/* === Reportes === */}
+          <TabsContent value="reports">
+            <Card className="rounded-2xl shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle>Reportes de publicaciones</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    placeholder="Buscar por publicación, email, estado o comentario…"
+                    value={reportQuery}
+                    onChange={(e) => setReportQuery(e.target.value)}
+                  />
+                </div>
+
+                {filteredReports.length === 0 ? (
+                  <EmptyState
+                    icon={Flag}
+                    title="Sin reportes"
+                    subtitle="Cuando los usuarios reporten publicaciones, aparecerán aquí."
+                  />
+                ) : (
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="max-h-[60vh] overflow-auto">
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[720px] sm:min-w-0">
+                          <TableHeader className="sticky top-0 bg-white z-10">
+                            <TableRow>
+                              <TableHead>Publicación</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Propietario
+                              </TableHead>
+                              <TableHead>Reportado por</TableHead>
+                              <TableHead className="hidden sm:table-cell">
+                                Fecha
+                              </TableHead>
+                              <TableHead>Estado</TableHead>
+                              <TableHead className="w-[30%]">
+                                Comentario
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredReports.map((r) => (
+                              <TableRow
+                                key={r.id}
+                                className="hover:bg-slate-50/60"
+                              >
+                                <TableCell className="font-medium">
+                                  <div
+                                    className="truncate max-w-[220px]"
+                                    title={r.publication_title || "—"}
+                                  >
+                                    {r.publication_title || "—"}
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-0.5">
+                                    ID: {r.publication_id || "—"}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-sm">
+                                  {r.owner_email || "—"}
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                  <div className="truncate max-w-[220px]">
+                                    {r.reporter_email || "—"}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-sm">
+                                  {fmtDate(r.created_at)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <StatusBadge status={r.status || "open"} />
+                                    {(r.status || "open") !== "closed" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 text-xs"
+                                        onClick={() =>
+                                          setReportStatus(r.id, "closed")
+                                        }
+                                      >
+                                        Cerrar
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+
+                                <TableCell className="text-sm">
+                                  <p
+                                    className="line-clamp-3"
+                                    title={r.comment || ""}
+                                  >
+                                    {r.comment || "—"}
+                                  </p>
                                 </TableCell>
                               </TableRow>
                             ))}

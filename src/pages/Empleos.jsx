@@ -15,8 +15,12 @@ import {
   Globe,
   Heart,
   Plus,
+  Flag,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { Textarea } from "@/ui/textarea";
+
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
@@ -43,6 +47,7 @@ import {
   doc,
   serverTimestamp,
   orderBy,
+  addDoc,
 } from "firebase/firestore";
 
 // Helpers
@@ -70,9 +75,7 @@ async function filterByActiveSubscription(list) {
   if (!list.length) return [];
 
   // emails únicos de creadores
-  const emails = [
-    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
-  ];
+  const emails = [...new Set(list.map((p) => p.created_by).filter(Boolean))];
 
   if (!emails.length) return [];
 
@@ -125,7 +128,6 @@ async function filterByActiveSubscription(list) {
   });
 }
 
-
 // ¿La publicación está vencida por suscripción?
 const isPublicationExpired = (pub) => {
   const d = toJsDate(pub.subscription_end_date);
@@ -143,13 +145,19 @@ function getCityFromLocation(location) {
   let loc = location.toString().trim();
 
   // Primero cortamos por coma y nos quedamos con la última parte
-  const commaParts = loc.split(",").map((p) => p.trim()).filter(Boolean);
+  const commaParts = loc
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (commaParts.length > 0) {
     loc = commaParts[commaParts.length - 1];
   }
 
   // Si tiene guión, nos quedamos con la primera parte (antes del barrio)
-  const dashParts = loc.split("-").map((p) => p.trim()).filter(Boolean);
+  const dashParts = loc
+    .split("-")
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (dashParts.length > 0) {
     loc = dashParts[0];
   }
@@ -241,12 +249,16 @@ async function fetchEmpleos() {
   }
 }
 
-
 export default function Empleos() {
   // ===== Auth + Favoritos =====
   const [user, setUser] = useState(null);
   const [favIds, setFavIds] = useState(new Set());
   const [favBusy, setFavBusy] = useState({}); // id -> boolean
+
+  // ===== Reporte de publicaciones =====
+  const [reportJob, setReportJob] = useState(null);
+  const [reportComment, setReportComment] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -291,6 +303,49 @@ export default function Empleos() {
       toast.error("No se pudo actualizar el favorito");
     } finally {
       setFavBusy((m) => ({ ...m, [id]: false }));
+    }
+  };
+
+  // ===== Reportes =====
+  // ===== Reportes =====
+  const openReportModal = (job) => {
+    if (!user) {
+      toast.error("Tenés que iniciar sesión para reportar.");
+      return;
+    }
+    setReportJob(job);
+    setReportComment("");
+  };
+
+  const submitReport = async () => {
+    if (!reportJob || !reportComment.trim()) {
+      toast.error("Escribí un comentario antes de enviar.");
+      return;
+    }
+
+    try {
+      setReportLoading(true);
+
+      await addDoc(collection(db, "reports"), {
+        publication_id: reportJob.id,
+        publication_title: reportJob.title || "",
+        owner_email: reportJob.created_by || reportJob.owner_email || null,
+        reporter_uid: user.uid,
+        reporter_email: user.email,
+        comment: reportComment.trim(),
+        category: reportJob.category || "empleo",
+        status: "open",
+        created_at: serverTimestamp(),
+      });
+
+      toast.success("Reporte enviado. Gracias por avisar 🙌");
+      setReportJob(null);
+      setReportComment("");
+    } catch (err) {
+      console.error(err);
+      toast.error("No se pudo enviar el reporte.");
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -363,7 +418,7 @@ export default function Empleos() {
   );
 
   // ===== Filtrado + orden + favoritos primero =====
-    const filteredSorted = useMemo(() => {
+  const filteredSorted = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     const min = toNumber(minSalary) || 0;
 
@@ -400,7 +455,6 @@ export default function Empleos() {
         matchesSalary
       );
     });
-
 
     if (sortBy === "salary-desc")
       list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
@@ -782,14 +836,27 @@ export default function Empleos() {
                             </a>
                           )}
                         </div>
-                        <Link to={`/empleos/${job.slug || job.id}`}>
+
+                        <div className="flex items-center gap-2">
+                          <Link to={`/empleos/${job.slug || job.id}`}>
+                            <Button
+                              size="sm"
+                              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-sm"
+                            >
+                              Ver detalles
+                            </Button>
+                          </Link>
+
                           <Button
                             size="sm"
-                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-sm"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => openReportModal(job)}
                           >
-                            Ver detalles
+                            <Flag className="w-4 h-4 mr-1" />
+                            Reportar
                           </Button>
-                        </Link>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -855,6 +922,56 @@ export default function Empleos() {
             )}
           </>
         )}
+
+        <Dialog
+          open={!!reportJob}
+          onOpenChange={(open) => {
+            if (!open) {
+              setReportJob(null);
+              setReportComment("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reportar publicación</DialogTitle>
+            </DialogHeader>
+
+            <p className="text-sm text-slate-600 mb-2">
+              Estás reportando:{" "}
+              <span className="font-semibold">
+                {reportJob?.title || "Sin título"}
+              </span>
+            </p>
+
+            <Textarea
+              placeholder="Contanos qué está mal en esta publicación…"
+              rows={4}
+              value={reportComment}
+              onChange={(e) => setReportComment(e.target.value)}
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setReportJob(null);
+                  setReportComment("");
+                }}
+                disabled={reportLoading}
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                onClick={submitReport}
+                disabled={reportLoading || !reportComment.trim()}
+              >
+                {reportLoading ? "Enviando…" : "Enviar reporte"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

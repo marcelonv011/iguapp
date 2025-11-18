@@ -430,12 +430,7 @@ export default function JobDetails() {
 
                   <Dialog open={reportOpen} onOpenChange={setReportOpen}>
                     <DialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="rounded-full px-4 text-red-600 hover:bg-red-50"
-                      >
-                        <Flag className="w-4 h-4 mr-2" /> Reportar
-                      </Button>
+                    
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                       <DialogHeader>
