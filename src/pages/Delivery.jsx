@@ -94,7 +94,10 @@ export default function Delivery() {
           ...doc.data(),
         }));
 
-        setRestaurants(data);
+        // ➜ Filtrar por suscripción activa del dueño del restaurante
+        const filtered = await filterRestaurantsBySubscription(data);
+
+        setRestaurants(filtered);
       } catch (error) {
         console.error("Error al cargar restaurantes:", error);
       } finally {
@@ -104,6 +107,95 @@ export default function Delivery() {
 
     fetchRestaurants();
   }, []);
+
+  // ---- Helpers de fecha/suscripción ----
+  const toJsDate = (v) => {
+    if (!v) return null;
+    if (v?.toDate) return v.toDate();
+    if (v?.seconds) return new Date(v.seconds * 1000);
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  };
+
+  const isExpired = (end) => {
+    const d = toJsDate(end);
+    return d ? d.getTime() < Date.now() : true;
+  };
+
+  // Filtra restaurantes cuyo dueño NO tiene suscripción activa
+  async function filterRestaurantsBySubscription(list) {
+    if (!list.length) return [];
+
+    // extraer todos los emails de los dueños (owner_email primero)
+    const emails = [
+      ...new Set(
+        list
+          .map((r) => (r.owner_email || r.created_by || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (!emails.length) return [];
+
+    const states = {}; // { email: { sub, expired } }
+
+    await Promise.all(
+      emails.map(async (email) => {
+        try {
+          const qSub = query(
+            collection(db, "subscriptions"),
+            where("user_email", "==", email)
+          );
+          const snap = await getDocs(qSub);
+          if (snap.empty) return;
+
+          const docs = snap.docs.map((d) => d.data());
+
+          // elegir la suscripción con mayor end_date
+          const pickBest = (arr) =>
+            arr.reduce((best, cur) => {
+              if (!cur.end_date) return best;
+              if (!best || !best.end_date) return cur;
+
+              const ms = cur.end_date?.toDate?.()
+                ? cur.end_date.toDate().getTime()
+                : cur.end_date?.seconds
+                ? cur.end_date.seconds * 1000
+                : new Date(cur.end_date).getTime();
+
+              const bestMs = best.end_date?.toDate?.()
+                ? best.end_date.toDate().getTime()
+                : best.end_date?.seconds
+                ? best.end_date.seconds * 1000
+                : new Date(best.end_date).getTime();
+
+              return ms > bestMs ? cur : best;
+            }, null);
+
+          const sub = pickBest(docs);
+          if (!sub) return;
+
+          states[email] = {
+            sub,
+            expired: isExpired(sub.end_date),
+          };
+        } catch (e) {
+          console.error("Error en sub de", email, e);
+        }
+      })
+    );
+
+    // filtrar restaurantes
+    return list.filter((r) => {
+      // 👇 usamos la MISMA clave que para armar "states"
+      const key = (r.owner_email || r.created_by || "").trim();
+      const info = states[key];
+      if (!info) return false;
+      if (info.sub.status !== "active") return false;
+      if (info.expired) return false;
+      return true;
+    });
+  }
 
   // ==== Handler para votar restaurante ====
   const handleRate = async (restaurant, value) => {

@@ -69,6 +69,84 @@ function getCityFromLocation(location) {
   return loc || null;
 }
 
+// ==== Fechas / suscripciones ====
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();          // Timestamp de Firestore
+  if (v?.seconds) return new Date(v.seconds * 1000); // otro formato timestamp
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  // si no hay fecha, consideramos vencida
+  return d ? d.getTime() < Date.now() : true;
+};
+
+/**
+ * Recibe una lista de publicaciones y deja solo las
+ * que pertenecen a usuarios con suscripción activa y no vencida.
+ */
+async function filterByActiveSubscription(list) {
+  if (!list.length) return [];
+
+  // emails únicos de creadores
+  const emails = [
+    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
+  ];
+  if (!emails.length) return [];
+
+  const resultByEmail = {};
+
+  await Promise.all(
+    emails.map(async (email) => {
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", email)
+        );
+        const snap = await getDocs(qSub);
+        if (snap.empty) return;
+
+        const docs = snap.docs.map((d) => d.data());
+
+        // elegir la suscripción con end_date más lejana (igual que en AdminPanel)
+        const pickBest = (arr) =>
+          arr.reduce((best, cur) => {
+            const getMs = (x) =>
+              x?.toDate
+                ? x.toDate().getTime()
+                : x?.seconds
+                ? x.seconds * 1000
+                : x
+                ? new Date(x).getTime()
+                : -Infinity;
+            return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+          }, null);
+
+        const sub = pickBest(docs);
+        if (!sub) return;
+
+        const expired = isExpired(sub.end_date);
+        resultByEmail[email] = { sub, expired };
+      } catch (e) {
+        console.error("[ventas] error cargando sub de", email, e);
+      }
+    })
+  );
+
+  // Solo dejamos publicaciones de usuarios con plan activo y no vencido
+  return list.filter((p) => {
+    const info = resultByEmail[p.created_by];
+    if (!info) return false;                 // sin suscripción → no muestra
+    if (info.sub.status !== "active") return false;
+    if (info.expired) return false;
+    return true;
+  });
+}
+
+
 // ========= Fetch de ventas desde Firestore =========
 
 async function fetchVentas() {
@@ -127,7 +205,7 @@ async function fetchVentas() {
       orderBy("created_date", "desc")
     );
     const r1 = await tryQuery(q1);
-    return r1;
+    return await filterByActiveSubscription(r1);
   } catch (e) {
     console.warn("[ventas] q1 falló:", e?.code || e);
   }
@@ -138,7 +216,7 @@ async function fetchVentas() {
     const r2 = await tryQuery(q2);
     const activos = r2.filter((x) => isActivoStatus(x.status));
     const final = activos.sort((a, b) => b.created_date - a.created_date);
-    return final;
+    return await filterByActiveSubscription(final);
   } catch (e) {
     console.warn("[ventas] q2 falló:", e?.code || e);
   }
@@ -150,12 +228,13 @@ async function fetchVentas() {
     const ventaLike = all.filter((x) => isVentaCat(x.category));
     const activos = ventaLike.filter((x) => isActivoStatus(x.status));
     const final = activos.sort((a, b) => b.created_date - a.created_date);
-    return final;
+    return await filterByActiveSubscription(final);
   } catch (e) {
     console.error("[ventas] fallo general:", e?.code || e);
     return [];
   }
 }
+
 
 // ========= Componente principal =========
 

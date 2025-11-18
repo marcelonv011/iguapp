@@ -49,6 +49,90 @@ import {
 const toNumber = (v) =>
   v === undefined || v === null || v === "" ? undefined : Number(v);
 
+// ==== Fechas genéricas: Timestamp / string / Date a Date ====
+// ==== Fechas para suscripciones ====
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  // si no hay fecha, lo consideramos vencido
+  return d ? d.getTime() < Date.now() : true;
+};
+
+// Filtra una lista de publicaciones según la suscripción del dueño
+async function filterByActiveSubscription(list) {
+  if (!list.length) return [];
+
+  // emails únicos de creadores
+  const emails = [
+    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
+  ];
+
+  if (!emails.length) return [];
+
+  const resultByEmail = {};
+
+  await Promise.all(
+    emails.map(async (email) => {
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", email)
+        );
+        const snap = await getDocs(qSub);
+        if (snap.empty) return;
+
+        const docs = snap.docs.map((d) => d.data());
+
+        // elijo la suscripción con end_date más lejana (igual que en AdminPanel)
+        const pickBest = (arr) =>
+          arr.reduce((best, cur) => {
+            const getMs = (x) =>
+              x?.toDate
+                ? x.toDate().getTime()
+                : x?.seconds
+                ? x.seconds * 1000
+                : x
+                ? new Date(x).getTime()
+                : -Infinity;
+            return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+          }, null);
+
+        const sub = pickBest(docs);
+        if (!sub) return;
+
+        const expired = isExpired(sub.end_date);
+        resultByEmail[email] = { sub, expired };
+      } catch (e) {
+        console.error("[empleos] error cargando sub de", email, e);
+      }
+    })
+  );
+
+  // Mantengo solo las publicaciones de usuarios con plan activo y no vencido
+  return list.filter((p) => {
+    const info = resultByEmail[p.created_by];
+    if (!info) return false; // sin suscripción => no muestra
+    if (info.sub.status !== "active") return false;
+    if (info.expired) return false;
+    return true;
+  });
+}
+
+
+// ¿La publicación está vencida por suscripción?
+const isPublicationExpired = (pub) => {
+  const d = toJsDate(pub.subscription_end_date);
+  if (!d) return false; // si no tiene fecha, la dejamos pasar (por ahora)
+  return d.getTime() < Date.now();
+};
+
 // ========= Helper: obtiene ciudad desde location =========
 // Soporta formatos tipo:
 // "Av. Misiones 123, Puerto Iguazú"
@@ -110,16 +194,14 @@ async function fetchEmpleos() {
     );
 
   const isActivoStatus = (st) =>
-    ["active", "activo", "activa"].includes(
-      String(st || "").toLowerCase()
-    );
+    ["active", "activo", "activa"].includes(String(st || "").toLowerCase());
 
   const tryQuery = async (q) => {
     const snap = await getDocs(q);
     return snap.docs.map(normalize);
   };
 
-  // 1) Ideal: category=empleo + status=active + orderBy
+  // 1) Ideal
   try {
     const q1 = fsQuery(
       col,
@@ -128,37 +210,37 @@ async function fetchEmpleos() {
       orderBy("created_date", "desc")
     );
     const r1 = await tryQuery(q1);
-    return r1;
+    return await filterByActiveSubscription(r1);
   } catch (e) {
     console.warn("[empleos] q1 falló:", e?.code || e);
   }
 
-  // 2) Solo category=empleo, filtrando status=activo en cliente
+  // 2) Solo category=empleo
   try {
     const q2 = fsQuery(col, where("category", "==", "empleo"));
     const r2 = await tryQuery(q2);
     const activos = r2.filter((x) => isActivoStatus(x.status));
     const final = activos.sort((a, b) => b.created_date - a.created_date);
-    return final;
+    return await filterByActiveSubscription(final);
   } catch (e) {
     console.warn("[empleos] q2 falló:", e?.code || e);
   }
 
-  // 3) Fallback: traer todo y filtrar por categoría + status=activo
+  // 3) Fallback general
   try {
     const snap = await getDocs(col);
     const all = snap.docs.map(normalize);
 
     const empleoLike = all.filter((x) => isEmpleoCat(x.category));
     const activos = empleoLike.filter((x) => isActivoStatus(x.status));
-
     const final = activos.sort((a, b) => b.created_date - a.created_date);
-    return final;
+    return await filterByActiveSubscription(final);
   } catch (e) {
     console.error("[empleos] fallo general:", e?.code || e);
     return [];
   }
 }
+
 
 export default function Empleos() {
   // ===== Auth + Favoritos =====
@@ -281,11 +363,14 @@ export default function Empleos() {
   );
 
   // ===== Filtrado + orden + favoritos primero =====
-  const filteredSorted = useMemo(() => {
+    const filteredSorted = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     const min = toNumber(minSalary) || 0;
 
     let list = (publications || []).filter((pub) => {
+      // 👇 Si la suscripción del dueño está vencida, NO la mostramos
+      if (isPublicationExpired(pub)) return false;
+
       const matchesSearch =
         !q ||
         pub.title?.toLowerCase().includes(q) ||
@@ -315,6 +400,7 @@ export default function Empleos() {
         matchesSalary
       );
     });
+
 
     if (sortBy === "salary-desc")
       list.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));

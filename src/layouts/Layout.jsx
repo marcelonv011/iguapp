@@ -33,6 +33,7 @@ import { db, auth } from "@/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { Badge } from "@/ui/badge";
+import { useQueryClient } from "@tanstack/react-query"; // 👈 NUEVO
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -41,6 +42,44 @@ export default function Layout({ children }) {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profile, setProfile] = useState(null);
+
+  const queryClient = useQueryClient(); // 👈 NUEVO
+
+  // Helper para invalidar keys
+  const invalidate = (key) => {
+    if (!key) return;
+    queryClient.invalidateQueries({ queryKey: [key] });
+  };
+
+  // Según a qué sección vaya, invalidamos los queries correspondientes
+  const invalidateForRoute = (routeName) => {
+    switch (routeName) {
+      case "Inicio":
+        invalidate("featured-publications");
+        invalidate("featured-restaurants");
+        break;
+      case "Empleos":
+        invalidate("empleos");
+        break;
+      case "Alquileres":
+        invalidate("alquileres");
+        break;
+      case "Ventas":
+        invalidate("ventas");
+        break;
+      case "Negocios":
+        invalidate("emprendimientos");
+        break;
+      case "Delivery":
+        // Ajustá estos keys si en Delivery usás otro nombre
+        invalidate("delivery");
+        invalidate("restaurants");
+        invalidate("featured-restaurants");
+        break;
+      default:
+        break;
+    }
+  };
 
   // === Cargar perfil desde Firestore ===
   useEffect(() => {
@@ -166,7 +205,7 @@ export default function Layout({ children }) {
               <div className="hidden sm:block">
                 <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
                   <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600">
-                    Ciudad Digital
+                    ConectCity
                   </span>
                 </h1>
                 <p className="text-xs text-slate-500">
@@ -185,6 +224,7 @@ export default function Layout({ children }) {
                     key={item.name}
                     to={item.href}
                     aria-current={active ? "page" : undefined}
+                    onClick={() => invalidateForRoute(item.name)} // 👈 NUEVO
                     className={`flex items-center gap-2 px-4 py-2 rounded-2xl transition-all
                       ${
                         active
@@ -247,7 +287,6 @@ export default function Layout({ children }) {
                     {(profile?.role_type === "admin" ||
                       profile?.role_type === "superadmin") && (
                       <>
-                        {/* Panel de Admin */}
                         <DropdownMenuItem asChild>
                           <Link to="/admin">
                             <Settings className="w-4 h-4" />
@@ -255,7 +294,6 @@ export default function Layout({ children }) {
                           </Link>
                         </DropdownMenuItem>
 
-                        {/* Mi Restaurante -> ruta fija */}
                         <DropdownMenuItem asChild>
                           <Link to="/mi-restaurante">
                             <ChefHat className="w-4 h-4" />
@@ -339,8 +377,13 @@ export default function Layout({ children }) {
                   <Link
                     key={item.name}
                     to={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all border
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      invalidateForRoute(item.name); // 👈 NUEVO
+                    }}
+                    className={`flex items-center gap-3 px-4 py
+
+-3 rounded-2xl transition-all border
                       ${
                         active
                           ? "bg-slate-900 text-white border-slate-900"
@@ -378,18 +421,21 @@ export default function Layout({ children }) {
               <div className="space-y-2 text-sm">
                 <Link
                   to={createPageUrl("Empleos")}
+                  onClick={() => invalidateForRoute("Empleos")} // 👈 NUEVO
                   className="block text-slate-400 hover:text-white"
                 >
                   Empleos
                 </Link>
                 <Link
                   to={createPageUrl("Alquileres")}
+                  onClick={() => invalidateForRoute("Alquileres")} // 👈 NUEVO
                   className="block text-slate-400 hover:text-white"
                 >
                   Alquileres
                 </Link>
                 <Link
                   to={createPageUrl("Delivery")}
+                  onClick={() => invalidateForRoute("Delivery")} // 👈 NUEVO
                   className="block text-slate-400 hover:text-white"
                 >
                   Delivery

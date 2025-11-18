@@ -53,6 +53,85 @@ const getCityFromLocation = (loc) => {
   return parts[parts.length - 1].trim();
 };
 
+// ==== Fechas / suscripciones ====
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();               // Timestamp de Firestore
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  // si no hay fecha, consideramos vencida
+  return d ? d.getTime() < Date.now() : true;
+};
+
+/**
+ * Recibe una lista de publicaciones y deja solo las
+ * que pertenecen a usuarios con suscripción activa y no vencida.
+ * Usa el campo `created_by` de cada publicación.
+ */
+async function filterByActiveSubscription(list) {
+  if (!list.length) return [];
+
+  // emails únicos de creadores
+  const emails = [
+    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
+  ];
+  if (!emails.length) return [];
+
+  const resultByEmail = {};
+
+  await Promise.all(
+    emails.map(async (email) => {
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", email)
+        );
+        const snap = await getDocs(qSub);
+        if (snap.empty) return;
+
+        const docs = snap.docs.map((d) => d.data());
+
+        // elegir la suscripción con end_date más lejana
+        const pickBest = (arr) =>
+          arr.reduce((best, cur) => {
+            const getMs = (x) =>
+              x?.toDate
+                ? x.toDate().getTime()
+                : x?.seconds
+                ? x.seconds * 1000
+                : x
+                ? new Date(x).getTime()
+                : -Infinity;
+            return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+          }, null);
+
+        const sub = pickBest(docs);
+        if (!sub) return;
+
+        const expired = isExpired(sub.end_date);
+        resultByEmail[email] = { sub, expired };
+      } catch (e) {
+        console.error("[emprendimientos] error sub de", email, e);
+      }
+    })
+  );
+
+  // Solo dejamos publicaciones de usuarios con plan activo y no vencido
+  return list.filter((p) => {
+    const info = resultByEmail[p.created_by];
+    if (!info) return false;                   // sin suscripción → no muestra
+    if (info.sub.status !== "active") return false;
+    if (info.expired) return false;
+    return true;
+  });
+}
+
+
 export default function Emprendimientos() {
   const queryClient = useQueryClient();
 
@@ -227,57 +306,63 @@ export default function Emprendimientos() {
 
   // ===== Query Firestore =====
   const {
-    data: publications = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["emprendimientos"],
-    queryFn: async () => {
-      const col = collection(db, "publications");
+  data: publications = [],
+  isLoading,
+  error,
+} = useQuery({
+  queryKey: ["emprendimientos"],
+  queryFn: async () => {
+    const col = collection(db, "publications");
 
-      try {
-        const q1 = fsQuery(
-          col,
-          where("category", "==", "emprendimiento"),
-          where("status", "==", "active"),
-          orderBy("created_date", "desc")
-        );
-        const s1 = await getDocs(q1);
-        const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows1.length > 0) return rows1;
-      } catch (e) {
-        console.warn(
-          "[emprendimientos q1] Necesita índice o falló created_date/orderBy:",
-          e?.code,
-          e?.message
-        );
+    try {
+      const q1 = fsQuery(
+        col,
+        where("category", "==", "emprendimiento"),
+        where("status", "==", "active"),
+        orderBy("created_date", "desc")
+      );
+      const s1 = await getDocs(q1);
+      const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (rows1.length > 0) {
+        const filtered = await filterByActiveSubscription(rows1);
+        return filtered;
       }
+    } catch (e) {
+      console.warn(
+        "[emprendimientos q1] Necesita índice o falló created_date/orderBy:",
+        e?.code,
+        e?.message
+      );
+    }
 
-      try {
-        const q2 = fsQuery(
-          col,
-          where("category", "==", "emprendimiento"),
-          where("status", "==", "active")
+    try {
+      const q2 = fsQuery(
+        col,
+        where("category", "==", "emprendimiento"),
+        where("status", "==", "active")
+      );
+      const s2 = await getDocs(q2);
+      const rows2 = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (rows2.length > 0) {
+        const sorted = rows2.sort(
+          (a, b) =>
+            new Date(b.created_date || 0) - new Date(a.created_date || 0)
         );
-        const s2 = await getDocs(q2);
-        const rows2 = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows2.length > 0) {
-          return rows2.sort(
-            (a, b) =>
-              new Date(b.created_date || 0) - new Date(a.created_date || 0)
-          );
-        }
-      } catch (e) {
-        console.warn(
-          "[emprendimientos q2] Falla en where/lectura:",
-          e?.code,
-          e?.message
-        );
+        const filtered = await filterByActiveSubscription(sorted);
+        return filtered;
       }
+    } catch (e) {
+      console.warn(
+        "[emprendimientos q2] Falla en where/lectura:",
+        e?.code,
+        e?.message
+      );
+    }
 
-      return [];
-    },
-  });
+    // si nada funcionó → lista vacía
+    return [];
+  },
+});
 
   // Opciones de ubicación (ciudades)
   const locations = useMemo(() => {

@@ -51,6 +51,7 @@ import {
   addDoc,
   deleteDoc,
   serverTimestamp,
+  getDocs,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -84,12 +85,29 @@ export default function GestionarRestaurante() {
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [orderIdFilter, setOrderIdFilter] = useState("");
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionExpired, setSubscriptionExpired] = useState(false);
+  const [subLoading, setSubLoading] = useState(true);
 
   // fecha para filtrar pedidos (por defecto: hoy)
   const [ordersDateFilter, setOrdersDateFilter] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
   });
+
+  // ---- Helpers de fecha/suscripción ----
+  const toJsDate = (v) => {
+    if (!v) return null;
+    if (v?.toDate) return v.toDate();
+    if (v?.seconds) return new Date(v.seconds * 1000);
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  };
+
+  const isExpired = (end) => {
+    const d = toJsDate(end);
+    return d ? d.getTime() < Date.now() : true;
+  };
 
   // Restaurant form
   const [restaurantForm, setRestaurantForm] = useState({
@@ -161,6 +179,72 @@ export default function GestionarRestaurante() {
 
     loadRestaurant();
   }, [user]);
+
+  // ===== Cargar suscripción del usuario =====
+useEffect(() => {
+  if (!user) return;
+
+  const loadSubscription = async () => {
+    setSubLoading(true);
+
+    try {
+      const qSub = query(
+        collection(db, "subscriptions"),
+        where("user_email", "==", user.email)
+      );
+
+      const snap = await getDocs(qSub);
+
+      if (snap.empty) {
+        setSubscription(null);
+        setSubscriptionExpired(true);
+        return;
+      }
+
+      const docs = snap.docs.map((d) => d.data());
+
+      // 👇 elegir la suscripción con mayor end_date, manejando bien el "best"
+      const best = docs.reduce((best, cur) => {
+        if (!cur.end_date) return best;          // ignorar docs sin end_date
+        if (!best || !best.end_date) return cur; // primera válida
+
+        const ms = cur.end_date?.toDate?.()
+          ? cur.end_date.toDate().getTime()
+          : cur.end_date?.seconds
+          ? cur.end_date.seconds * 1000
+          : new Date(cur.end_date).getTime();
+
+        const bestMs = best.end_date?.toDate?.()
+          ? best.end_date.toDate().getTime()
+          : best.end_date?.seconds
+          ? best.end_date.seconds * 1000
+          : new Date(best.end_date).getTime();
+
+        return ms > bestMs ? cur : best;
+      }, null);
+
+      if (!best || !best.end_date) {
+        setSubscription(null);
+        setSubscriptionExpired(true);
+        return;
+      }
+
+      const expired = isExpired(best.end_date);
+
+      setSubscription(best);
+      setSubscriptionExpired(expired);
+    } catch (e) {
+      console.error("Error cargando suscripción:", e);
+      // si querés, podrías ponerla como activa por defecto en caso de error
+      // setSubscriptionExpired(false);
+    } finally {
+      setSubLoading(false);
+    }
+  };
+
+  loadSubscription();
+}, [user]);
+
 
   // ==========================
   //  Cargar items del menú
@@ -315,6 +399,10 @@ export default function GestionarRestaurante() {
   };
 
   const handleOpenRestaurantDialog = () => {
+    if (subscriptionExpired) {
+      toast.error("Tu suscripción está inactiva");
+      return;
+    }
     if (myRestaurant) {
       setRestaurantForm({
         name: myRestaurant.name || "",
@@ -367,6 +455,10 @@ export default function GestionarRestaurante() {
   };
 
   const handleEditMenuItem = (item) => {
+    if (subscriptionExpired) {
+      toast.error("Tu suscripción está inactiva");
+      return;
+    }
     setEditingMenuItem(item);
     setMenuItemForm({
       name: item.name || "",
@@ -566,6 +658,33 @@ export default function GestionarRestaurante() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Header */}
         <div className="mb-4">
+          {!subLoading && subscriptionExpired && (
+            <Card className="border-l-4 border-l-red-500 bg-red-50/80 shadow-sm mb-4">
+              <CardContent className="p-4 flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-red-700">
+                    Suscripción inactiva / vencida
+                  </h3>
+                  <p className="text-sm text-red-700 mt-1">
+                    Tu restaurante NO aparece en la app de Delivery.
+                  </p>
+                  <p className="text-xs text-red-600 mt-1">
+                    Renová tu suscripción para habilitar todas las funciones.
+                  </p>
+
+                  {/* 👇 ACÁ VA EL BOTÓN */}
+                  <Button
+                    className="mt-3 bg-red-600 hover:bg-red-700"
+                    onClick={() => navigate("/suscripcion")}
+                  >
+                    Renovar suscripción
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {!restaurantLoading && myRestaurant && (
             <Card
               className={`mb-4 border-l-4 ${
@@ -623,6 +742,7 @@ export default function GestionarRestaurante() {
             <Button
               onClick={handleOpenRestaurantDialog}
               className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30"
+              disabled={subscriptionExpired}
             >
               <Edit className="w-4 h-4 mr-2" />
               {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
@@ -761,10 +881,15 @@ export default function GestionarRestaurante() {
                   </div>
                   <Button
                     onClick={() => {
+                      if (subscriptionExpired) {
+                        toast.error("Tu suscripción está inactiva");
+                        return;
+                      }
                       resetMenuItemForm();
                       setMenuItemDialogOpen(true);
                     }}
                     className="bg-red-600 hover:bg-red-700 shadow-sm"
+                    disabled={subscriptionExpired} // 👈 ACÁ VA EL disabled
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Agregar Item
@@ -1160,6 +1285,7 @@ export default function GestionarRestaurante() {
                                           )
                                         }
                                         disabled={
+                                          subscriptionExpired ||
                                           updatingOrderStatusId === order.id
                                         }
                                         className="bg-blue-600 hover:bg-blue-700"
@@ -1639,7 +1765,7 @@ export default function GestionarRestaurante() {
               </Button>
               <Button
                 onClick={handleCreateOrUpdateRestaurant}
-                disabled={savingRestaurant}
+                disabled={savingRestaurant || subscriptionExpired}
                 className="bg-red-600 hover:bg-red-700"
               >
                 {myRestaurant ? "Actualizar" : "Crear Restaurante"}
@@ -1853,7 +1979,7 @@ export default function GestionarRestaurante() {
               </Button>
               <Button
                 onClick={handleSaveMenuItem}
-                disabled={savingMenuItem}
+                disabled={savingMenuItem || subscriptionExpired}
                 className="bg-red-600 hover:bg-red-700"
               >
                 {editingMenuItem ? "Actualizar" : "Agregar"}

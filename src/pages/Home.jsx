@@ -3,10 +3,7 @@ import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl, asARS } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
-import {
-  fetchFeaturedPublications,
-  fetchFeaturedRestaurants,
-} from "@/api/firestoreFetchers";
+import { fetchFeaturedRestaurants } from "@/api/firestoreFetchers";
 import { useAuthUser } from "@/hooks/useAuthUser";
 
 import {
@@ -26,19 +23,182 @@ import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 
+// ===== Firebase para filtrar por suscripción =====
+import { db } from "@/firebase";
+import {
+  collection,
+  getDocs,
+  query as fsQuery,
+  where,
+  orderBy,
+  limit,
+} from "firebase/firestore";
+
+// ==== Helpers de fecha / suscripción ====
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate(); // Timestamp de Firestore
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  // si no hay fecha, lo consideramos vencido
+  return d ? d.getTime() < Date.now() : true;
+};
+
+/**
+ * Recibe una lista de publicaciones y deja solo las
+ * que pertenecen a usuarios con suscripción activa y no vencida.
+ * Usa el campo `created_by` de cada publicación.
+ */
+async function filterByActiveSubscription(list) {
+  if (!list.length) return [];
+
+  // emails únicos de creadores
+  const emails = [
+    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
+  ];
+  if (!emails.length) return [];
+
+  const resultByEmail = {};
+
+  await Promise.all(
+    emails.map(async (email) => {
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", email)
+        );
+        const snap = await getDocs(qSub);
+        if (snap.empty) return;
+
+        const docs = snap.docs.map((d) => d.data());
+
+        // elegir la suscripción con end_date más lejana
+        const pickBest = (arr) =>
+          arr.reduce((best, cur) => {
+            const getMs = (x) =>
+              x?.toDate
+                ? x.toDate().getTime()
+                : x?.seconds
+                ? x.seconds * 1000
+                : x
+                ? new Date(x).getTime()
+                : -Infinity;
+            return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+          }, null);
+
+        const sub = pickBest(docs);
+        if (!sub) return;
+
+        const expired = isExpired(sub.end_date);
+        resultByEmail[email] = { sub, expired };
+      } catch (e) {
+        console.error("[home] error leyendo suscripción de", email, e);
+      }
+    })
+  );
+
+  // Sólo dejamos publicaciones de usuarios con plan activo y no vencido
+  return list.filter((p) => {
+    const info = resultByEmail[p.created_by];
+    if (!info) return false; // sin suscripción → no muestra
+    if (info.sub.status !== "active") return false;
+    if (info.expired) return false;
+    return true;
+  });
+}
+
+// ==== Fetch destacado para Home (con filtro de suscripción) ====
+async function fetchHomeFeaturedPublications() {
+  const col = collection(db, "publications");
+
+  const normalize = (d) => {
+    const r = d.data();
+    return {
+      id: d.id,
+      ...r,
+      created_date: r?.created_date?.toDate
+        ? r.created_date.toDate()
+        : r?.created_date
+        ? new Date(r.created_date)
+        : new Date(0),
+    };
+  };
+
+  const tryQuery = async (q) => {
+    const snap = await getDocs(q);
+    return snap.docs.map(normalize);
+  };
+
+  // 1) featured + status=active + orderBy + limit
+  try {
+    const q1 = fsQuery(
+      col,
+      where("featured", "==", true),
+      where("status", "==", "active"),
+      orderBy("created_date", "desc"),
+      limit(6)
+    );
+    const r1 = await tryQuery(q1);
+    if (r1.length > 0) {
+      const filtered = await filterByActiveSubscription(r1);
+      return filtered;
+    }
+  } catch (e) {
+    console.warn("[home] q1 destacadas falló:", e?.code || e);
+  }
+
+  // 2) Solo featured + active (sin orderBy, por si falta índice)
+  try {
+    const q2 = fsQuery(
+      col,
+      where("featured", "==", true),
+      where("status", "==", "active")
+    );
+    const r2 = await tryQuery(q2);
+    if (r2.length > 0) {
+      r2.sort((a, b) => b.created_date - a.created_date);
+      const filtered = await filterByActiveSubscription(r2);
+      return filtered;
+    }
+  } catch (e) {
+    console.warn("[home] q2 destacadas falló:", e?.code || e);
+  }
+
+  // 3) Fallback muy simple: todas las featured (aunque no tengan status),
+  // igual filtramos por suscripción y ordenamos por fecha.
+  try {
+    const q3 = fsQuery(col, where("featured", "==", true));
+    const r3 = await tryQuery(q3);
+    if (r3.length > 0) {
+      r3.sort((a, b) => b.created_date - a.created_date);
+      const filtered = await filterByActiveSubscription(r3);
+      return filtered;
+    }
+  } catch (e) {
+    console.warn("[home] q3 fallback destacadas falló:", e?.code || e);
+  }
+
+  return [];
+}
+
 export default function Home() {
   const { user, loadingUser } = useAuthUser();
 
-  // Publicaciones destacadas
+  // Publicaciones destacadas (con filtro de suscripción)
   const { data: publications = [], isLoading: loadingPubs } = useQuery({
     queryKey: ["featured-publications"],
-    queryFn: fetchFeaturedPublications,
+    queryFn: fetchHomeFeaturedPublications,
   });
 
   const mainPub = publications[0] || null;
   const otherPubs = publications.slice(1);
 
-  // Restaurantes destacados
+  // Restaurantes destacados (se mantiene tu fetch original)
   const { data: restaurants = [], isLoading: loadingRests } = useQuery({
     queryKey: ["featured-restaurants"],
     queryFn: fetchFeaturedRestaurants,
@@ -183,203 +343,205 @@ export default function Home() {
       </section>
 
       {/* ===== Featured Publications ===== */}
-      <section className="py-16 bg-slate-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-3xl font-bold text-slate-900 mb-2">
-                Publicaciones Destacadas
-              </h2>
-              <p className="text-slate-600">
-                Las mejores oportunidades elegidas para vos
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-amber-500">
-              <Star className="w-7 h-7 fill-amber-400" />
-              <span className="font-semibold">Destacadas</span>
-            </div>
-          </div>
+      {/* ===== Featured Publications ===== */}
+<section className="py-16 bg-slate-50">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="flex justify-between items-center mb-8">
+      <div>
+        <h2 className="text-3xl font-bold text-slate-900 mb-2">
+          Publicaciones Destacadas
+        </h2>
+        <p className="text-slate-600">
+          Las mejores oportunidades elegidas para vos
+        </p>
+      </div>
+      <div className="flex items-center gap-2 text-amber-500">
+        <Star className="w-7 h-7 fill-amber-400" />
+        <span className="font-semibold">Destacadas</span>
+      </div>
+    </div>
 
-          {loadingPubs ? (
-            <p className="text-slate-500">Cargando publicaciones…</p>
-          ) : !mainPub ? (
-            <p className="text-slate-500">
-              No hay publicaciones destacadas por ahora.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* ===== Tarjeta principal grande ===== */}
-              <Card className="lg:col-span-2 relative overflow-hidden group border-none shadow-xl bg-gradient-to-br from-amber-50 via-white to-slate-50">
-                <div className="absolute inset-0 pointer-events-none opacity-60">
-                  <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-amber-100 blur-3xl" />
-                  <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-purple-100 blur-3xl" />
-                </div>
+    {loadingPubs ? (
+      <p className="text-slate-500">Cargando publicaciones…</p>
+    ) : !mainPub ? (
+      <p className="text-slate-500">
+        No hay publicaciones destacadas por ahora.
+      </p>
+    ) : (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Tarjeta principal (imagen chica a la izquierda) */}
+        <Card className="lg:col-span-2 relative overflow-hidden border border-amber-100 shadow-sm bg-white">
+          <div className="relative z-10 flex flex-col md:flex-row gap-4 p-5">
+            {/* Imagen reducida */}
+            {mainPub.images?.[0] && (
+              <div className="shrink-0 w-full md:w-44 h-40 md:h-40 rounded-xl overflow-hidden bg-slate-100">
+                <img
+                  src={mainPub.images[0]}
+                  alt={mainPub.title}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
 
-                <div className="relative grid grid-cols-1 md:grid-cols-[1.2fr,1.1fr] gap-0">
-                  {/* Imagen grande */}
-                  {mainPub.images?.[0] && (
-                    <div className="relative h-64 md:h-full overflow-hidden">
-                      <img
-                        src={mainPub.images[0]}
-                        alt={mainPub.title}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                      <div className="absolute top-3 left-3 flex items-center gap-2">
-                        <Badge className="bg-amber-500 text-white flex items-center gap-1 shadow-md">
-                          <Star className="w-3 h-3 fill-white" />
-                          Destacada
-                        </Badge>
-                        {mainPub.category && (
-                          <Badge className="bg-white/90 text-slate-800 capitalize shadow">
-                            {mainPub.category}
-                          </Badge>
-                        )}
-                      </div>
-                      {mainPub.location && (
-                        <div className="absolute bottom-3 left-3 flex items-center text-white/90 text-sm bg-black/40 rounded-full px-3 py-1 backdrop-blur">
-                          <MapPin className="w-4 h-4 mr-1" />
-                          <span className="truncate max-w-[220px] md:max-w-[260px]">
-                            {mainPub.location}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+            {/* Texto / info */}
+            <div className="flex-1 flex flex-col justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <Badge className="bg-amber-500 text-white flex items-center gap-1">
+                    <Star className="w-3 h-3 fill-white" />
+                    Destacada
+                  </Badge>
+                  {mainPub.category && (
+                    <Badge className="bg-amber-50 text-amber-700 border-amber-200 capitalize">
+                      {mainPub.category}
+                    </Badge>
                   )}
-
-                  {/* Info principal */}
-                  <CardContent className="p-6 md:p-7 flex flex-col justify-between relative z-10">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-amber-600 font-semibold mb-2">
-                        Oportunidad destacada
-                      </p>
-                      <h3 className="text-2xl md:text-3xl font-extrabold text-slate-900 mb-3 leading-tight">
-                        {mainPub.title}
-                      </h3>
-
-                      {mainPub.description && (
-                        <p className="text-slate-600 text-sm md:text-base mb-4 line-clamp-3">
-                          {mainPub.description}
-                        </p>
-                      )}
-
-                      {typeof mainPub.price === "number" && (
-                        <p className="text-3xl font-extrabold text-emerald-600 mb-3">
-                          {asARS(mainPub.price)}
-                        </p>
-                      )}
-
-                      {mainPub.contact_phone && (
-                        <p className="text-sm text-slate-500">
-                          Contacto:{" "}
-                          <span className="font-medium">
-                            {mainPub.contact_phone}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2 items-center">
-                      {mainPub.category === "empleo" && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs border-blue-200 text-blue-700 bg-blue-50"
-                        >
-                          Ideal para conseguir trabajo
-                        </Badge>
-                      )}
-                      {mainPub.category === "alquiler" && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs border-purple-200 text-purple-700 bg-purple-50"
-                        >
-                          Oportunidad para mudarte
-                        </Badge>
-                      )}
-                      {mainPub.category === "venta" && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs border-emerald-200 text-emerald-700 bg-emerald-50"
-                        >
-                          Oferta especial
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
+                  {mainPub.location && (
+                    <span className="inline-flex items-center text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
+                      <MapPin className="w-3 h-3 mr-1" />
+                      <span className="truncate max-w-[160px] md:max-w-[220px]">
+                        {mainPub.location}
+                      </span>
+                    </span>
+                  )}
                 </div>
-              </Card>
 
-              {/* ===== Otras destacadas en columnas ===== */}
-              <div className="space-y-4">
-                {otherPubs.length === 0 ? (
-                  <Card className="h-full flex items-center justify-center border-dashed border-slate-200">
-                    <CardContent className="text-center text-slate-500">
-                      No hay más destacadas por ahora.
-                    </CardContent>
-                  </Card>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-amber-600 font-semibold mb-1">
+                  Oportunidad destacada
+                </p>
+
+                <h3 className="text-xl md:text-2xl font-extrabold text-slate-900 mb-2 leading-snug line-clamp-2">
+                  {mainPub.title}
+                </h3>
+
+                {mainPub.description && (
+                  <p className="text-slate-600 text-sm mb-1 line-clamp-2">
+                    {mainPub.description}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {typeof mainPub.price === "number" ? (
+                  <p className="text-2xl font-extrabold text-emerald-600">
+                    {asARS(mainPub.price)}
+                  </p>
                 ) : (
-                  otherPubs.map((pub) => (
-                    <Card
-                      key={pub.id}
-                      className="flex gap-3 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all"
-                    >
-                      {pub.images?.[0] && (
-                        <div className="w-28 h-28 shrink-0 overflow-hidden">
-                          <img
-                            src={pub.images[0]}
-                            alt={pub.title}
-                            loading="lazy"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
-                      <CardContent className="py-3 px-3 flex-1 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">
-                              {pub.title}
-                            </h4>
-                            {pub.category && (
-                              <Badge className="capitalize text-[10px] px-2 py-0.5">
-                                {pub.category}
-                              </Badge>
-                            )}
-                          </div>
-                          {pub.description && (
-                            <p className="text-xs text-slate-600 line-clamp-2">
-                              {pub.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          {typeof pub.price === "number" ? (
-                            <span className="text-sm font-bold text-emerald-600">
-                              {asARS(pub.price)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">
-                              Consultar precio
-                            </span>
-                          )}
-                          {pub.location && (
-                            <div className="flex items-center text-[11px] text-slate-500">
-                              <MapPin className="w-3 h-3 mr-1" />
-                              <span className="truncate max-w-[120px]">
-                                {pub.location}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                  <p className="text-sm text-slate-500">Consultar precio</p>
+                )}
+
+                {mainPub.contact_phone && (
+                  <p className="text-xs text-slate-500">
+                    Contacto:{" "}
+                    <span className="font-medium">
+                      {mainPub.contact_phone}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2 mt-1">
+                {mainPub.category === "empleo" && (
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-blue-200 text-blue-700 bg-blue-50"
+                  >
+                    Ideal para conseguir trabajo
+                  </Badge>
+                )}
+                {mainPub.category === "alquiler" && (
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-purple-200 text-purple-700 bg-purple-50"
+                  >
+                    Oportunidad para mudarte
+                  </Badge>
+                )}
+                {mainPub.category === "venta" && (
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-emerald-200 text-emerald-700 bg-emerald-50"
+                  >
+                    Oferta especial
+                  </Badge>
                 )}
               </div>
             </div>
+          </div>
+        </Card>
+
+        {/* Otras destacadas (ya eran compactas, solo pequeño ajuste) */}
+        <div className="space-y-4">
+          {otherPubs.length === 0 ? (
+            <Card className="h-full flex items-center justify-center border-dashed border-slate-200">
+              <CardContent className="text-center text-slate-500">
+                No hay más destacadas por ahora.
+              </CardContent>
+            </Card>
+          ) : (
+            otherPubs.map((pub) => (
+              <Card
+                key={pub.id}
+                className="flex gap-3 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all border border-slate-100 bg-white"
+              >
+                {pub.images?.[0] && (
+                  <div className="w-24 h-24 shrink-0 overflow-hidden bg-slate-100">
+                    <img
+                      src={pub.images[0]}
+                      alt={pub.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <CardContent className="py-3 px-3 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">
+                        {pub.title}
+                      </h4>
+                      {pub.category && (
+                        <Badge className="capitalize text-[10px] px-2 py-0.5">
+                          {pub.category}
+                        </Badge>
+                      )}
+                    </div>
+                    {pub.description && (
+                      <p className="text-xs text-slate-600 line-clamp-2">
+                        {pub.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    {typeof pub.price === "number" ? (
+                      <span className="text-sm font-bold text-emerald-600">
+                        {asARS(pub.price)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500">
+                        Consultar precio
+                      </span>
+                    )}
+                    {pub.location && (
+                      <div className="flex items-center text-[11px] text-slate-500">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        <span className="truncate max-w-[120px]">
+                          {pub.location}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
           )}
         </div>
-      </section>
+      </div>
+    )}
+  </div>
+</section>
+
 
       {/* ===== Featured Restaurants ===== */}
       <section className="py-16">
@@ -412,7 +574,10 @@ export default function Home() {
               {restaurants.map((restaurant) => (
                 <Link
                   key={restaurant.id}
-                  to={createPageUrl("RestaurantMenu") + `?id=${restaurant.id}`}
+                  to={
+                    createPageUrl("RestaurantMenu") +
+                    `?id=${restaurant.id}`
+                  }
                 >
                   <Card className="hover:shadow-xl hover:-translate-y-1 transition-all group overflow-hidden">
                     <div className="h-40 bg-gradient-to-br from-orange-400 to-red-500 relative overflow-hidden">

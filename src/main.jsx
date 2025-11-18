@@ -33,8 +33,14 @@ import "./index.css";
 const qc = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
+      // Siempre consideramos los datos "viejos"
+      staleTime: 0,
+      // Cada vez que se monta la página, vuelve a leer de Firestore
+      refetchOnMount: "always",
+      // Si volvés a la pestaña, vuelve a leer
+      refetchOnWindowFocus: "always",
+      // Si se reconecta internet, vuelve a leer
+      refetchOnReconnect: "always",
       retry: 1,
     },
   },

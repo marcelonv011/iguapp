@@ -680,7 +680,7 @@ export default function AdminPanel() {
     if (sub.status !== shouldBeStatus) {
       try {
         const patch = { status: shouldBeStatus };
-        if (shouldBeStatus === "active") patch.publications_used = 0; // reset de cupo al renovar
+        // 🔴 YA NO reseteamos publications_used al activar
         await updateDoc(doc(db, "subscriptions", sub.id), patch);
         sub = { ...sub, ...patch };
       } catch (e) {
@@ -730,11 +730,14 @@ export default function AdminPanel() {
   }, [subscription]);
 
   const planUsed = useMemo(() => {
-    // preferimos publications_used del plan si existe; si no, usamos thisMonthCount
+    let raw;
     if (typeof subscription?.publications_used === "number") {
-      return subscription.publications_used;
+      raw = subscription.publications_used;
+    } else {
+      raw = thisMonthCount;
     }
-    return thisMonthCount;
+    // Nunca dejar que sea negativo
+    return raw < 0 ? 0 : raw;
   }, [subscription, thisMonthCount]);
 
   const reachedLimit = planUsed >= planLimit;
@@ -858,6 +861,9 @@ export default function AdminPanel() {
       geo_lon: form.geo_lon ?? null,
       ...(editing ? {} : { created_date: serverTimestamp() }),
       updated_date: serverTimestamp(),
+
+      subscription_status_snapshot: subscription?.status || null,
+      subscription_end_date: subscription?.end_date || null,
     };
 
     if (form.category === "empleo") {
@@ -895,18 +901,16 @@ export default function AdminPanel() {
       });
     }
     if (form.category === "emprendimiento") {
-  Object.assign(payload, {
-    website: form.website || null,
-    instagram: form.instagram || null,
-    whatsapp: form.whatsapp || null,
-    delivery: form.delivery,
-    business_type: form.business_type || null,
-    rating: form.rating ? Number(form.rating) : null,
-    open_hours: form.open_hours || null,
-  });
-}
-
-
+      Object.assign(payload, {
+        website: form.website || null,
+        instagram: form.instagram || null,
+        whatsapp: form.whatsapp || null,
+        delivery: form.delivery,
+        business_type: form.business_type || null,
+        rating: form.rating ? Number(form.rating) : null,
+        open_hours: form.open_hours || null,
+      });
+    }
 
     try {
       if (editing) {
@@ -994,6 +998,24 @@ export default function AdminPanel() {
     try {
       await deleteDoc(doc(db, "publications", id));
       toast.success("Publicación eliminada");
+
+      // 🔁 Devolver un cupo al plan si existe suscripción
+      if (subscription?.id) {
+        try {
+          await updateDoc(doc(db, "subscriptions", subscription.id), {
+            // restamos 1 al contador de publicaciones usadas
+            publications_used: increment(-1),
+          });
+          // recargar suscripción para actualizar el contador en pantalla
+          await loadSubscription(user.email);
+        } catch (e) {
+          console.error(
+            "No se pudo actualizar publications_used al borrar:",
+            e
+          );
+        }
+      }
+
       await loadPublications(user.email);
     } catch (e) {
       console.error(e);
@@ -1212,7 +1234,7 @@ export default function AdminPanel() {
                             />
                           </div>
                         )}
-                      </div>              
+                      </div>
 
                       {/* Ubicación */}
                       <div>

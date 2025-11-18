@@ -80,6 +80,85 @@ const getCityFromLocation = (loc) => {
   return parts[parts.length - 1].trim();
 };
 
+// ==== Fechas genéricas: Timestamp / string / Date a Date ====
+// ==== Fechas para suscripciones ====
+const toJsDate = (v) => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const isExpired = (end) => {
+  const d = toJsDate(end);
+  return d ? d.getTime() < Date.now() : true;
+};
+
+// Filtra lista de publicaciones según suscripción del autor
+async function filterByActiveSubscription(list) {
+  if (!list.length) return [];
+
+  const emails = [
+    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
+  ];
+  if (!emails.length) return [];
+
+  const resultByEmail = {};
+
+  await Promise.all(
+    emails.map(async (email) => {
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", email)
+        );
+        const snap = await getDocs(qSub);
+        if (snap.empty) return;
+
+        const docs = snap.docs.map((d) => d.data());
+
+        const pickBest = (arr) =>
+          arr.reduce((best, cur) => {
+            const getMs = (x) =>
+              x?.toDate
+                ? x.toDate().getTime()
+                : x?.seconds
+                ? x.seconds * 1000
+                : x
+                ? new Date(x).getTime()
+                : -Infinity;
+            return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
+          }, null);
+
+        const sub = pickBest(docs);
+        if (!sub) return;
+
+        const expired = isExpired(sub.end_date);
+        resultByEmail[email] = { sub, expired };
+      } catch (e) {
+        console.error("[alquileres] error cargando sub de", email, e);
+      }
+    })
+  );
+
+  return list.filter((p) => {
+    const info = resultByEmail[p.created_by];
+    if (!info) return false;
+    if (info.sub.status !== "active") return false;
+    if (info.expired) return false;
+    return true;
+  });
+}
+
+
+// ¿La publicación está vencida por suscripción?
+const isPublicationExpired = (pub) => {
+  const d = toJsDate(pub.subscription_end_date);
+  if (!d) return false; // si no tiene fecha, por ahora la dejamos pasar
+  return d.getTime() < Date.now();
+};
+
 export default function Alquileres() {
   const queryClient = useQueryClient();
 
@@ -253,7 +332,7 @@ export default function Alquileres() {
   ]);
 
   // ===== Query Firestore =====
-  const {
+   const {
     data: publications = [],
     isLoading,
     error,
@@ -271,7 +350,9 @@ export default function Alquileres() {
         );
         const s1 = await getDocs(q1);
         const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows1.length > 0) return rows1;
+        if (rows1.length > 0) {
+          return await filterByActiveSubscription(rows1);
+        }
       } catch (e) {
         console.warn(
           "[q1] Necesita índice o falló created_date/orderBy:",
@@ -288,7 +369,9 @@ export default function Alquileres() {
         );
         const s2 = await getDocs(q2);
         const rows2 = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows2.length > 0) return rows2;
+        if (rows2.length > 0) {
+          return await filterByActiveSubscription(rows2);
+        }
       } catch (e) {
         console.warn("[q2] Falla en where/lectura:", e?.code, e?.message);
       }
@@ -316,6 +399,7 @@ export default function Alquileres() {
     },
   });
 
+
   const formatter = useMemo(
     () =>
       new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
@@ -330,10 +414,13 @@ export default function Alquileres() {
   }, [publications]);
 
   // ===== Filtrado + orden + favoritos primero =====
-  const filtered = useMemo(() => {
+    const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     let list = publications.filter((p) => {
+      // 👇 si la suscripción del dueño está vencida, NO mostramos este alquiler
+      if (isPublicationExpired(p)) return false;
+
       const matchesSearch =
         !term ||
         p?.title?.toLowerCase().includes(term) ||
@@ -363,6 +450,7 @@ export default function Alquileres() {
         matchesFav
       );
     });
+
     // Orden primario
     list.sort((a, b) => {
       if (sortBy === "priceAsc") {
