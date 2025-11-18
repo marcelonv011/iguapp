@@ -208,9 +208,7 @@ export default function Layout({ children }) {
                     ConectCity
                   </span>
                 </h1>
-                <p className="text-xs text-slate-500">
-                  Tu ciudad en un solo lugar
-                </p>
+                <p className="text-xs text-slate-500">Conectamos tu ciudad.</p>
               </div>
             </Link>
 
@@ -407,51 +405,62 @@ export default function Layout({ children }) {
       {/* Footer */}
       <footer className="bg-slate-950 text-slate-200 py-10 mt-16 relative overflow-hidden">
         <div className="absolute right-[-10%] bottom-[-30%] w-[500px] h-[500px] rounded-full bg-indigo-600/10 blur-3xl" />
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Columna 1 – ConectCity */}
             <div>
-              <h3 className="font-bold text-lg mb-3">Ciudad Digital</h3>
+              <h3 className="font-bold text-lg mb-3">ConectCity</h3>
               <p className="text-slate-400 text-sm">
-                Conectamos tu ciudad: empleos, alquileres, ventas,
-                emprendimientos y delivery.
+                La plataforma que conecta tu ciudad: empleos, alquileres,
+                ventas, negocios y delivery. Todo lo que necesitás, en un solo
+                lugar.
               </p>
             </div>
+
+            {/* Columna 2 – Explorar */}
             <div>
-              <h3 className="font-bold text-lg mb-3">Enlaces</h3>
+              <h3 className="font-bold text-lg mb-3">Explorar</h3>
               <div className="space-y-2 text-sm">
                 <Link
                   to={createPageUrl("Empleos")}
-                  onClick={() => invalidateForRoute("Empleos")} // 👈 NUEVO
+                  onClick={() => invalidateForRoute("Empleos")}
                   className="block text-slate-400 hover:text-white"
                 >
-                  Empleos
+                  Ofertas de Empleo
                 </Link>
+
                 <Link
                   to={createPageUrl("Alquileres")}
-                  onClick={() => invalidateForRoute("Alquileres")} // 👈 NUEVO
+                  onClick={() => invalidateForRoute("Alquileres")}
                   className="block text-slate-400 hover:text-white"
                 >
-                  Alquileres
+                  Alquileres y Viviendas
                 </Link>
+
                 <Link
                   to={createPageUrl("Delivery")}
-                  onClick={() => invalidateForRoute("Delivery")} // 👈 NUEVO
+                  onClick={() => invalidateForRoute("Delivery")}
                   className="block text-slate-400 hover:text-white"
                 >
-                  Delivery
+                  Delivery y Restaurantes
                 </Link>
               </div>
             </div>
+
+            {/* Columna 3 – Contacto */}
             <div>
               <h3 className="font-bold text-lg mb-3">Contacto</h3>
               <p className="text-slate-400 text-sm">
-                ¿Querés ser Admin y publicar? Escribinos para más info.
+                ¿Querés publicar en ConectCity como negocio o profesional?
+                Escribinos y te asesoramos para empezar.
               </p>
             </div>
           </div>
+
+          {/* Copy final */}
           <div className="border-t border-slate-800 mt-8 pt-6 text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} Ciudad Digital — Todos los derechos
-            reservados.
+            © {new Date().getFullYear()} ConectCity — Tu ciudad, conectada.
           </div>
         </div>
       </footer>

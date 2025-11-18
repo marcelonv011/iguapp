@@ -139,7 +139,7 @@ const getAmenities = (p = {}) => {
     chips.push({ label: "Amoblado", ok: yesNo(v) });
   }
 
-  return chips.filter((c) => c.ok !== undefined);
+  return chips.filter((c) => c.ok);
 };
 
 // helpers para pluralizar dormitorios / baños
@@ -413,8 +413,7 @@ export default function AlquilerDetalle() {
             >
               <ArrowLeft className="w-4 h-4" /> Volver
             </Button>
-            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
-            </div>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500"></div>
           </div>
 
           <div className="hidden sm:flex items-center gap-2">
@@ -948,7 +947,10 @@ export default function AlquilerDetalle() {
                 </>
               ) : alquiler.contact_email ? (
                 <>
-                  <a href={`mailto:${alquiler.contact_email}`} className="flex-1">
+                  <a
+                    href={`mailto:${alquiler.contact_email}`}
+                    className="flex-1"
+                  >
                     <Button className="w-full rounded-lg text-xs px-3">
                       Correo
                     </Button>
