@@ -459,7 +459,7 @@ export default function SuperAdminPanel() {
       </div>
 
       {/* Contenido */}
-      <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12'>
+      <div className='max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-4 pb-20'>
         {/* Filtro Mes/Año para ingresos */}
         <div className='flex flex-wrap items-center gap-3 mb-4'>
           <div className='text-sm text-slate-600'>Filtrar ingresos por:</div>
@@ -667,32 +667,46 @@ export default function SuperAdminPanel() {
 
         {/* Tabs */}
         <Tabs defaultValue='publications' className='space-y-6'>
-          <TabsList className='grid w-full grid-cols-1 sm:grid-cols-4 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200'>
-            <TabsTrigger value='publications'>
-              Publicaciones
-              <span className='ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100'>
-                {publications.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value='users'>
-              Usuarios
-              <span className='ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100'>
-                {users.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value='subscriptions'>
-              Suscripciones
-              <span className='ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100'>
-                {subscriptions.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value='reports'>
-              Reportes
-              <span className='ml-2 text-xs rounded-full px-2 py-0.5 bg-slate-100'>
-                {reports.length}
-              </span>
-            </TabsTrigger>
-          </TabsList>
+          <div className='w-full overflow-x-auto -mx-3 sm:mx-0 pb-2'>
+            <TabsList className='inline-grid min-w-max grid-cols-4 sm:grid-cols-4 gap-2 rounded-xl bg-white/70 backdrop-blur border border-slate-200 px-1'>
+              <TabsTrigger
+                value='publications'
+                className='text-xs sm:text-sm px-2 py-2'
+              >
+                Publicaciones
+                <span className='ml-2 text-[10px] sm:text-xs rounded-full px-2 py-0.5 bg-slate-100'>
+                  {publications.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value='users'
+                className='text-xs sm:text-sm px-2 py-2'
+              >
+                Usuarios
+                <span className='ml-2 text-[10px] sm:text-xs rounded-full px-2 py-0.5 bg-slate-100'>
+                  {users.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value='subscriptions'
+                className='text-xs sm:text-sm px-2 py-2'
+              >
+                Suscripciones
+                <span className='ml-2 text-[10px] sm:text-xs rounded-full px-2 py-0.5 bg-slate-100'>
+                  {subscriptions.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value='reports'
+                className='text-xs sm:text-sm px-2 py-2'
+              >
+                Reportes
+                <span className='ml-2 text-[10px] sm:text-xs rounded-full px-2 py-0.5 bg-slate-100'>
+                  {reports.length}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* === Publicaciones === */}
           <TabsContent value='publications'>
@@ -721,8 +735,8 @@ export default function SuperAdminPanel() {
                 ) : (
                   <div className='rounded-lg border border-slate-200 overflow-hidden'>
                     <div className='max-h-[60vh] overflow-auto'>
-                      <div className='overflow-x-auto'>
-                        <Table className='min-w-[720px] sm:min-w-0'>
+                      <div className='overflow-x-auto scrollbar-thin scrollbar-track-slate-50 scrollbar-thumb-slate-300/70'>
+                        <Table className='min-w-[720px] sm:min-w-0 text-xs sm:text-sm'>
                           <TableHeader className='sticky top-0 bg-white z-10'>
                             <TableRow>
                               <TableHead className='w-[40%]'>Título</TableHead>
@@ -1046,7 +1060,7 @@ export default function SuperAdminPanel() {
               </CardHeader>
               <CardContent>
                 {/* Filtros por fecha + buscador para reportes */}
-                <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
+                <div className='mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-3'>
                   <div className='flex-1'>
                     <label className='block text-xs font-medium text-slate-600 mb-1'>
                       Desde
@@ -1204,7 +1218,7 @@ export default function SuperAdminPanel() {
 
       {/* Dialogo Editar Publicación */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className='sm:max-w-xl w-[92vw] sm:w-auto overflow-x-hidden'>
+        <DialogContent className='sm:max-w-xl w-[94vw] sm:w-auto overflow-x-hidden px-4 sm:px-6'>
           <DialogHeader>
             <DialogTitle>Editar Publicación</DialogTitle>
           </DialogHeader>
