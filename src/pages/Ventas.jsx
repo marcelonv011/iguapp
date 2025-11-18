@@ -8,8 +8,10 @@ import {
   Search,
   Tag,
   Heart,
+  Flag,
 } from "lucide-react";
-
+import { Textarea } from "@/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";
@@ -34,6 +36,7 @@ import {
   setDoc,
   deleteDoc,
   serverTimestamp,
+  addDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Link } from "react-router-dom";
@@ -72,7 +75,7 @@ function getCityFromLocation(location) {
 // ==== Fechas / suscripciones ====
 const toJsDate = (v) => {
   if (!v) return null;
-  if (v?.toDate) return v.toDate();          // Timestamp de Firestore
+  if (v?.toDate) return v.toDate(); // Timestamp de Firestore
   if (v?.seconds) return new Date(v.seconds * 1000); // otro formato timestamp
   const d = new Date(v);
   return isNaN(d) ? null : d;
@@ -92,9 +95,7 @@ async function filterByActiveSubscription(list) {
   if (!list.length) return [];
 
   // emails únicos de creadores
-  const emails = [
-    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
-  ];
+  const emails = [...new Set(list.map((p) => p.created_by).filter(Boolean))];
   if (!emails.length) return [];
 
   const resultByEmail = {};
@@ -139,13 +140,12 @@ async function filterByActiveSubscription(list) {
   // Solo dejamos publicaciones de usuarios con plan activo y no vencido
   return list.filter((p) => {
     const info = resultByEmail[p.created_by];
-    if (!info) return false;                 // sin suscripción → no muestra
+    if (!info) return false; // sin suscripción → no muestra
     if (info.sub.status !== "active") return false;
     if (info.expired) return false;
     return true;
   });
 }
-
 
 // ========= Fetch de ventas desde Firestore =========
 
@@ -235,7 +235,6 @@ async function fetchVentas() {
   }
 }
 
-
 // ========= Componente principal =========
 
 export default function Ventas() {
@@ -248,6 +247,10 @@ export default function Ventas() {
   const [favIds, setFavIds] = useState(new Set());
   const [favBusy, setFavBusy] = useState({});
   const [showFavOnly, setShowFavOnly] = useState(false);
+  // ===== Reportes =====
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportComment, setReportComment] = useState("");
 
   const {
     data: publications = [],
@@ -317,6 +320,48 @@ export default function Ventas() {
       toast.error("No se pudo actualizar el favorito");
     } finally {
       setFavBusy((m) => ({ ...m, [id]: false }));
+    }
+  };
+
+  const openReport = (product) => {
+    if (!user) {
+      toast.error("Iniciá sesión para reportar un producto");
+      return;
+    }
+    setReportTarget(product);
+    setReportComment("");
+    setReportOpen(true);
+  };
+
+  const submitReport = async (e) => {
+    e.preventDefault();
+    if (!user || !reportTarget) return;
+
+    const comment = reportComment.trim();
+    if (!comment) {
+      toast.error("Escribí un motivo para el reporte");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "reports"), {
+        publication_id: reportTarget.id,
+        publication_title: reportTarget.title || "",
+        owner_email: reportTarget.user_email || reportTarget.created_by || "",
+        reporter_uid: user.uid,
+        reporter_email: user.email || "",
+        comment,
+        status: "open",
+        created_at: serverTimestamp(),
+      });
+
+      toast.success("Reporte enviado. Gracias por avisarnos 🙌");
+      setReportOpen(false);
+      setReportTarget(null);
+      setReportComment("");
+    } catch (err) {
+      console.error("[ventas] error creando reporte:", err);
+      toast.error("No se pudo enviar el reporte");
     }
   };
 
@@ -622,13 +667,24 @@ export default function Ventas() {
                       </div>
                     )}
 
-                    <Button
-                      asChild
-                      size="sm"
-                      className="w-full bg-green-600 hover:bg-green-700"
-                    >
-                      <Link to={`/ventas/${product.id}`}>Ver detalles</Link>
-                    </Button>
+                    <div className="space-y-2">
+                      <Button
+                        asChild
+                        size="sm"
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        <Link to={`/ventas/${product.id}`}>Ver detalles</Link>
+                      </Button>
+
+                      <button
+                        type="button"
+                        onClick={() => openReport(product)}
+                        className="w-full inline-flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50/70 border border-dashed border-slate-200 rounded-full px-3 py-1 transition-colors"
+                      >
+                        <Flag className="w-3 h-3" />
+                        Reportar publicación
+                      </button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -649,6 +705,53 @@ export default function Ventas() {
           </div>
         )}
       </div>
+
+      {/* Modal para reportar publicación en Ventas */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-md w-[92vw] sm:w-auto">
+          <DialogHeader>
+            <DialogTitle>Reportar publicación</DialogTitle>
+          </DialogHeader>
+
+          {reportTarget && (
+            <form onSubmit={submitReport} className="space-y-4">
+              <div className="text-sm">
+                <p className="font-semibold text-slate-800 line-clamp-2">
+                  {reportTarget.title}
+                </p>
+                {reportTarget.location && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {reportTarget.location}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">
+                  Contanos qué pasa
+                </label>
+                <Textarea
+                  rows={4}
+                  placeholder="Ej: Información falsa, producto no existe, contenido inapropiado, etc."
+                  value={reportComment}
+                  onChange={(e) => setReportComment(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setReportOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit">Enviar reporte</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
