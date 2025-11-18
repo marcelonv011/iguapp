@@ -13,6 +13,7 @@ import {
   doc,
   serverTimestamp,
   runTransaction,
+  addDoc,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -30,7 +31,15 @@ import {
   Plus,
   Heart,
   Star,
+  Flag,
 } from "lucide-react";
+import { Textarea } from "@/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/ui/dialog";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";
@@ -167,6 +176,11 @@ export default function Alquileres() {
   const [favIds, setFavIds] = useState(new Set());
   const [favBusy, setFavBusy] = useState({}); // id -> boolean
   const [userRatings, setUserRatings] = useState({}); // { [publicationId]: number }
+    // ===== Reportes =====
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportComment, setReportComment] = useState("");
+
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -304,6 +318,50 @@ export default function Alquileres() {
       toast.error("No se pudo guardar tu voto");
     }
   };
+
+    const openReport = (property) => {
+    if (!user) {
+      toast.error("Iniciá sesión para reportar un alquiler");
+      return;
+    }
+    setReportTarget(property);
+    setReportComment("");
+    setReportOpen(true);
+  };
+
+  const submitReport = async (e) => {
+    e.preventDefault();
+    if (!user || !reportTarget) return;
+
+    const comment = reportComment.trim();
+    if (!comment) {
+      toast.error("Escribí un motivo para el reporte");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "reports"), {
+        publication_id: reportTarget.id,
+        publication_title: reportTarget.title || "",
+        owner_email:
+          reportTarget.user_email || reportTarget.created_by || "",
+        reporter_uid: user.uid,
+        reporter_email: user.email || "",
+        comment,
+        status: "open",
+        created_at: serverTimestamp(),
+      });
+
+      toast.success("Reporte enviado. Gracias por avisarnos 🙌");
+      setReportOpen(false);
+      setReportTarget(null);
+      setReportComment("");
+    } catch (err) {
+      console.error("Error creando reporte:", err);
+      toast.error("No se pudo enviar el reporte");
+    }
+  };
+
 
   // ===== Filtros / estado =====
   const [searchTerm, setSearchTerm] = useState("");
@@ -993,7 +1051,7 @@ export default function Alquileres() {
                         </div>
                       )}
 
-                      <div className="pt-4 border-t border-slate-200">
+                                            <div className="pt-4 border-t border-slate-200 space-y-2">
                         <Button
                           asChild
                           className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-sm"
@@ -1002,7 +1060,17 @@ export default function Alquileres() {
                             Ver detalles
                           </Link>
                         </Button>
+
+                        <button
+                          type="button"
+                          onClick={() => openReport(property)}
+                          className="w-full inline-flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50/70 border border-dashed border-slate-200 rounded-full px-3 py-1 transition-colors"
+                        >
+                          <Flag className="w-3 h-3" />
+                          Reportar publicación
+                        </button>
                       </div>
+
                     </CardContent>
                   </Card>
                 );
@@ -1074,6 +1142,52 @@ export default function Alquileres() {
           </>
         )}
       </div>
+      {/* Modal para reportar publicación */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-md w-[92vw] sm:w-auto">
+          <DialogHeader>
+            <DialogTitle>Reportar publicación</DialogTitle>
+          </DialogHeader>
+
+          {reportTarget && (
+            <form onSubmit={submitReport} className="space-y-4">
+              <div className="text-sm">
+                <p className="font-semibold text-slate-800 line-clamp-2">
+                  {reportTarget.title}
+                </p>
+                {reportTarget.location && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {reportTarget.location}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">
+                  Contanos qué pasa
+                </label>
+                <Textarea
+                  rows={4}
+                  placeholder="Ej: Información falsa, contenido inapropiado, sospecha de estafa, etc."
+                  value={reportComment}
+                  onChange={(e) => setReportComment(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setReportOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit">Enviar reporte</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

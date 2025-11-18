@@ -410,7 +410,7 @@ export default function SuperAdminPanel() {
         comment.includes(q) ||
         status.includes(q);
 
-      const d = toDate(r.created_at); 
+      const d = toDate(r.created_at);
       const matchesFrom = !fromDate || (d && d >= fromDate);
       const matchesTo = !toDateLimit || (d && d <= toDateLimit);
 
@@ -696,44 +696,15 @@ export default function SuperAdminPanel() {
                 <CardTitle>Gestión de Publicaciones</CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Filtros de fecha + buscador */}
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Desde
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
-                      value={reportFrom}
-                      onChange={(e) => setReportFrom(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Hasta
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
-                      value={reportTo}
-                      onChange={(e) => setReportTo(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-[2] relative">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Buscar
-                    </label>
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
-                        placeholder="Publicación, email, estado o comentario…"
-                        value={reportQuery}
-                        onChange={(e) => setReportQuery(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                {/* Buscador simple de publicaciones */}
+                <div className="mb-4 relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    placeholder="Buscar por título, categoría, usuario o estado…"
+                    value={pubQuery}
+                    onChange={(e) => setPubQuery(e.target.value)}
+                  />
                 </div>
 
                 {filteredPublications.length === 0 ? (
@@ -1069,14 +1040,46 @@ export default function SuperAdminPanel() {
                 <CardTitle>Reportes de publicaciones</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="mb-4 relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                    placeholder="Buscar por publicación, email, estado o comentario…"
-                    value={reportQuery}
-                    onChange={(e) => setReportQuery(e.target.value)}
-                  />
+                {/* Filtros por fecha + buscador para reportes */}
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Desde
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
+                      value={reportFrom}
+                      onChange={(e) => setReportFrom(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Hasta
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm"
+                      value={reportTo}
+                      onChange={(e) => setReportTo(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex-[2] relative">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Buscar
+                    </label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        className="w-full pl-9 pr-3 py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                        placeholder="Publicación, email, estado o comentario…"
+                        value={reportQuery}
+                        onChange={(e) => setReportQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {filteredReports.length === 0 ? (
