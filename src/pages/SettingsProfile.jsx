@@ -1,12 +1,18 @@
 // src/pages/SettingsProfile.jsx
 import React, { useEffect, useState } from "react";
-import { onAuthStateChanged, updateProfile } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  updateProfile,
+  deleteUser,
+  signOut,
+} from "firebase/auth";
 import { auth, db } from "@/firebase";
 import {
   doc,
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { uploadToCloudinary } from "@/lib/uploadImage";
@@ -18,12 +24,32 @@ import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea"; // por si después querés bio
 import { toast } from "sonner";
-import { Camera, Upload, Save, User, Phone } from "lucide-react";
+import {
+  Camera,
+  Upload,
+  Save,
+  User,
+  Phone,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
+
+// 🔹 IMPORTAMOS EL DIALOG
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/ui/dialog";
 
 export default function SettingsProfile() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // estado del formulario
   const [displayName, setDisplayName] = useState("");
@@ -116,11 +142,13 @@ export default function SettingsProfile() {
 
     setSaving(true);
     try {
-      // Actualizar Auth profile (opcional, útil si usás u.displayName/u.photoURL)
+      // Actualizar Auth profile
       await updateProfile(u, {
         displayName: displayName || u.displayName || "",
         photoURL: photoURL || null,
-      }).catch(() => { /* algunos proveedores bloquean, no es crítico */ });
+      }).catch(() => {
+        /* algunos proveedores bloquean, no es crítico */
+      });
 
       // Actualizar Firestore
       const ref = doc(db, "users", u.uid);
@@ -137,6 +165,45 @@ export default function SettingsProfile() {
       toast.error("No se pudo guardar");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 🔹 Lógica real de borrado (sin window.confirm)
+  const handleDeleteAccount = async () => {
+    const u = auth.currentUser;
+    if (!u) {
+      toast.error("No hay usuario autenticado");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      // 1) Borrar documento en Firestore
+      // 1) Borrar documento en Firestore (SIN .catch)
+      const userRef = doc(db, "users", u.uid);
+      await deleteDoc(userRef); // si falla, salta al catch grande
+
+      // 2) Borrar usuario de Auth
+      await deleteUser(u);
+
+      // 3) Cerrar sesión y redirigir
+      await signOut(auth).catch(() => {});
+      toast.success("Tu cuenta fue eliminada correctamente");
+      setDeleteDialogOpen(false);
+      navigate("/"); // o "/login"
+    } catch (e) {
+      console.error(e);
+      if (e.code === "auth/requires-recent-login") {
+        toast.error(
+          "Por seguridad, vuelve a iniciar sesión y luego intenta borrar la cuenta de nuevo."
+        );
+        setDeleteDialogOpen(false);
+        navigate("/login");
+      } else {
+        toast.error("No se pudo eliminar la cuenta. Intenta nuevamente.");
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -158,22 +225,32 @@ export default function SettingsProfile() {
               <User className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">Configuración de cuenta</h1>
-              <p className="text-white/80 text-sm">Actualizá tu nombre, teléfono y foto de perfil</p>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                Configuración de cuenta
+              </h1>
+              <p className="text-white/80 text-sm">
+                Actualizá tu nombre, teléfono y foto de perfil
+              </p>
             </div>
           </div>
         </div>
 
-        <Card className="rounded-2xl shadow-sm bg-white/90 backdrop-blur">
+        <Card className="rounded-2xl shadow-sm bg-white/90 backdrop-blur mb-6">
           <CardContent className="p-6 space-y-6">
             {/* Foto de perfil */}
             <section>
-              <Label className="text-sm font-semibold mb-2 block">Foto de perfil</Label>
+              <Label className="text-sm font-semibold mb-2 block">
+                Foto de perfil
+              </Label>
 
               <div className="flex items-center gap-4">
                 <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 grid place-items-center">
                   {photoURL ? (
-                    <img src={photoURL} alt="avatar" className="w-full h-full object-cover" />
+                    <img
+                      src={photoURL}
+                      alt="avatar"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <User className="w-8 h-8 text-slate-400" />
                   )}
@@ -190,7 +267,9 @@ export default function SettingsProfile() {
                     />
                     <Button
                       variant="outline"
-                      onClick={() => document.getElementById("photo-input").click()}
+                      onClick={() =>
+                        document.getElementById("photo-input").click()
+                      }
                       disabled={photoUploading}
                     >
                       <Camera className="w-4 h-4 mr-2" />
@@ -213,7 +292,7 @@ export default function SettingsProfile() {
               </div>
             </section>
 
-            {/* Nombre */}
+            {/* Nombre y teléfono */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="displayName">Nombre y apellido</Label>
@@ -239,7 +318,7 @@ export default function SettingsProfile() {
                   />
                 </div>
                 <p className="text-xs text-slate-500">
-                  Coloca caracteristica y numero sin espacios ni guiones.
+                  Colocá característica y número sin espacios ni guiones.
                 </p>
               </div>
             </section>
@@ -249,6 +328,71 @@ export default function SettingsProfile() {
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? "Guardando..." : "Guardar cambios"}
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Zona peligrosa: borrar cuenta con modal */}
+        <Card className="rounded-2xl shadow-sm bg-red-50/90 border border-red-200">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 grid place-items-center">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-red-700">
+                  Zona peligrosa
+                </h2>
+                <p className="text-sm text-red-600/80">
+                  Borrar tu cuenta eliminará tu usuario y datos de forma
+                  permanente. Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Dialog
+                open={deleteDialogOpen}
+                onOpenChange={setDeleteDialogOpen}
+              >
+                <DialogTrigger asChild>
+                  <Button variant="destructive" disabled={deleting}>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {deleting ? "Eliminando..." : "Borrar cuenta"}
+                  </Button>
+                </DialogTrigger>
+
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      ¿Seguro que querés borrar tu cuenta?
+                    </DialogTitle>
+                    <DialogDescription>
+                      Esta acción es permanente y eliminará tu usuario y tus
+                      datos asociados. No vas a poder recuperar la cuenta
+                      después.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setDeleteDialogOpen(false)}
+                      disabled={deleting}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleDeleteAccount}
+                      disabled={deleting}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {deleting ? "Eliminando..." : "Confirmar borrado"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>
