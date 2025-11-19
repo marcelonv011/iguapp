@@ -193,7 +193,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(400px_200px_at_10%_-10%,#dbeafe_0%,transparent_60%),radial-gradient(600px_300px_at_110%_10%,#e9d5ff_0%,transparent_60%)]">
-      {/* Header */}
+      {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/70 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -208,7 +208,9 @@ export default function Layout({ children }) {
                     ConectCity
                   </span>
                 </h1>
-                <p className="text-xs text-slate-500">Conectamos tu ciudad.</p>
+                <p className="text-xs text-slate-500">
+                  Conectamos tu ciudad, en un solo lugar.
+                </p>
               </div>
             </Link>
 
@@ -217,19 +219,20 @@ export default function Layout({ children }) {
               {mainNavigation.map((item) => {
                 const Icon = item.icon;
                 const active = isActivePath(item.href, item.name === "Inicio");
+
                 return (
                   <Link
                     key={item.name}
                     to={item.href}
                     aria-current={active ? "page" : undefined}
-                    onClick={() => invalidateForRoute(item.name)} // 👈 NUEVO
+                    onClick={() => invalidateForRoute(item.name)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-2xl transition-all
-                      ${
-                        active
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                      }
-                    `}
+                ${
+                  active
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                }
+              `}
                   >
                     <Icon className="w-4 h-4" />
                     <span>{item.name}</span>
@@ -247,6 +250,7 @@ export default function Layout({ children }) {
                       type="button"
                       className="flex items-center gap-3 cursor-pointer rounded-full pl-1 pr-3 py-1 hover:bg-slate-100 transition"
                     >
+                      {/* Avatar */}
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-xs font-semibold grid place-items-center shadow-md">
                         {profile?.photo_url ? (
                           <img
@@ -258,6 +262,8 @@ export default function Layout({ children }) {
                           <span>{initials}</span>
                         )}
                       </div>
+
+                      {/* Nombre y rol */}
                       <div className="hidden sm:block text-left">
                         <div className="text-sm font-semibold leading-tight truncate max-w-[160px]">
                           {displayName}
@@ -269,6 +275,7 @@ export default function Layout({ children }) {
                     </button>
                   </DropdownMenuTrigger>
 
+                  {/* Menu usuario */}
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="px-3 py-2 text-sm">
                       <p className="font-medium truncate">
@@ -276,7 +283,6 @@ export default function Layout({ children }) {
                       </p>
                       <div className="mt-2">
                         <RolePill />
-                        <RoleText />
                       </div>
                     </div>
 
@@ -377,17 +383,15 @@ export default function Layout({ children }) {
                     to={item.href}
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      invalidateForRoute(item.name); // 👈 NUEVO
+                      invalidateForRoute(item.name);
                     }}
-                    className={`flex items-center gap-3 px-4 py
-
--3 rounded-2xl transition-all border
-                      ${
-                        active
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "text-slate-700 hover:bg-slate-100 border-slate-200"
-                      }
-                    `}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all border
+                ${
+                  active
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "text-slate-700 hover:bg-slate-100 border-slate-200"
+                }
+              `}
                   >
                     <Icon className="w-5 h-5" />
                     {item.name}
