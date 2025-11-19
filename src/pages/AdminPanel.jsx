@@ -13,6 +13,7 @@ import {
   orderBy,
   serverTimestamp,
   increment,
+  getDoc,
 } from "firebase/firestore";
 import { useSearchParams } from "react-router-dom";
 
@@ -826,9 +827,10 @@ export default function AdminPanel() {
     }
   };
 
-  const handleSubmit = async (ev) => {
+    const handleSubmit = async (ev) => {
     ev.preventDefault();
 
+    // 1) Validar suscripción
     if (
       !subscription ||
       subscription.status !== "active" ||
@@ -842,99 +844,134 @@ export default function AdminPanel() {
       return;
     }
 
-    const payload = {
-      title: form.title.trim(),
-      description: form.description.trim(),
-      category: form.category,
-      price:
-        hasPriceCategory(form.category) && form.price !== ""
-          ? Number(form.price)
-          : null,
-      location: form.location || null, // corta
-      location_full: form.location_full || null, // completa
-      contact_phone: form.contact_phone || null,
-      contact_email: form.contact_email || user.email,
-      status: form.status ? String(form.status) : "pending",
-      images: imageFiles,
-      created_by: user.email,
-      geo_lat: form.geo_lat ?? null,
-      geo_lon: form.geo_lon ?? null,
-      ...(editing ? {} : { created_date: serverTimestamp() }),
-      updated_date: serverTimestamp(),
-
-      subscription_status_snapshot: subscription?.status || null,
-      subscription_end_date: subscription?.end_date || null,
-    };
-
-    if (form.category === "empleo") {
-      Object.assign(payload, {
-        company: form.company || null,
-        employment_type: form.employment_type,
-        work_mode: form.work_mode,
-        salary_min: form.salary_min ? Number(form.salary_min) : null,
-        salary_max: form.salary_max ? Number(form.salary_max) : null,
-      });
-    }
-    if (form.category === "alquiler") {
-      Object.assign(payload, {
-        rent_type: form.rent_type,
-        rooms: form.rooms || null,
-        bathrooms: form.bathrooms || null,
-        furnished: form.furnished,
-        expenses_included: form.expenses_included,
-        wifi: form.wifi === "si",
-        parking: form.parking === "si",
-        pets: form.pets === "si",
-        ac: form.ac === "si",
-        bbq: form.bbq === "si",
-        balcon: form.balcon === "si",
-        patio: form.patio === "si",
-      });
-    }
-    if (form.category === "venta") {
-      Object.assign(payload, {
-        condition: form.condition,
-        stock: form.stock ? Number(form.stock) : null,
-        brand: form.brand || null,
-        model: form.model || null,
-        sale_category: form.sale_category || null, // 👈 GUARDA SUBCATEGORÍA
-      });
-    }
-    if (form.category === "emprendimiento") {
-      Object.assign(payload, {
-        website: form.website || null,
-        instagram: form.instagram || null,
-        whatsapp: form.whatsapp || null,
-        delivery: form.delivery,
-        business_type: form.business_type || null,
-        rating: form.rating ? Number(form.rating) : null,
-        open_hours: form.open_hours || null,
-      });
-    }
-
     try {
+      // 2) Leer config global de publicaciones
+      const cfgSnap = await getDoc(doc(db, "settings", "publications"));
+      const requireApproval = cfgSnap.exists()
+        ? !!cfgSnap.data().require_approval
+        : true; // por defecto: requiere aprobación
+
+      // 3) Ver si este usuario tiene plan activo
+      const hasActiveSubscription =
+        subscription &&
+        subscription.status === "active" &&
+        !isExpired(subscription.end_date);
+
+      // 4) Decidir status inicial
+      let initialStatus;
+      if (editing) {
+        // si está editando, respetamos el status actual del doc
+        initialStatus = form.status ? String(form.status) : "pending";
+      } else {
+        // creando nuevo
+        initialStatus = "pending";
+        if (!requireApproval && hasActiveSubscription) {
+          // 👉 modo automático: suscripto + no requiere aprobación
+          initialStatus = "active";
+        }
+      }
+
+      const payload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        category: form.category,
+        price:
+          hasPriceCategory(form.category) && form.price !== ""
+            ? Number(form.price)
+            : null,
+        location: form.location || null,
+        location_full: form.location_full || null,
+        contact_phone: form.contact_phone || null,
+        contact_email: form.contact_email || user.email,
+        status: initialStatus, // 👈 usamos el status calculado
+        images: imageFiles,
+        created_by: user.email,
+        geo_lat: form.geo_lat ?? null,
+        geo_lon: form.geo_lon ?? null,
+        ...(editing ? {} : { created_date: serverTimestamp() }),
+        updated_date: serverTimestamp(),
+
+        subscription_status_snapshot: subscription?.status || null,
+        subscription_end_date: subscription?.end_date || null,
+      };
+
+      // Campos por categoría
+      if (form.category === "empleo") {
+        Object.assign(payload, {
+          company: form.company || null,
+          employment_type: form.employment_type,
+          work_mode: form.work_mode,
+          salary_min: form.salary_min ? Number(form.salary_min) : null,
+          salary_max: form.salary_max ? Number(form.salary_max) : null,
+        });
+      }
+      if (form.category === "alquiler") {
+        Object.assign(payload, {
+          rent_type: form.rent_type,
+          rooms: form.rooms || null,
+          bathrooms: form.bathrooms || null,
+          furnished: form.furnished,
+          expenses_included: form.expenses_included,
+          wifi: form.wifi === "si",
+          parking: form.parking === "si",
+          pets: form.pets === "si",
+          ac: form.ac === "si",
+          bbq: form.bbq === "si",
+          balcon: form.balcon === "si",
+          patio: form.patio === "si",
+        });
+      }
+      if (form.category === "venta") {
+        Object.assign(payload, {
+          condition: form.condition,
+          stock: form.stock ? Number(form.stock) : null,
+          brand: form.brand || null,
+          model: form.model || null,
+          sale_category: form.sale_category || null,
+        });
+      }
+      if (form.category === "emprendimiento") {
+        Object.assign(payload, {
+          website: form.website || null,
+          instagram: form.instagram || null,
+          whatsapp: form.whatsapp || null,
+          delivery: form.delivery,
+          business_type: form.business_type || null,
+          rating: form.rating ? Number(form.rating) : null,
+          open_hours: form.open_hours || null,
+        });
+      }
+
+      // 5) Guardar
       if (editing) {
         await updateDoc(doc(db, "publications", editing.id), payload);
         toast.success("Publicación actualizada");
       } else {
         await addDoc(collection(db, "publications"), payload);
+
         // incrementamos el contador del plan si el doc de suscripción existe
         if (subscription?.id) {
           await updateDoc(doc(db, "subscriptions", subscription.id), {
             publications_used: increment(1),
           });
         }
-        toast.success("Publicación creada");
+        toast.success(
+          initialStatus === "active"
+            ? "Publicación creada y activada"
+            : "Publicación creada y enviada a revisión"
+        );
       }
+
       setDialogOpen(false);
       resetForm();
       await loadPublications(user.email);
-      await loadSubscription(user.email); // refrescá el plan por si llegó al límite
+      await loadSubscription(user.email); // refresca contador del plan
     } catch (e) {
       console.error(e);
       toast.error("Error guardando la publicación");
     }
   };
+
 
   const handleEdit = (p) => {
     setEditing(p);

@@ -8,6 +8,7 @@ import {
   getDoc,
   updateDoc,
   deleteDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -148,6 +149,9 @@ export default function SuperAdminPanel() {
     featured: "no", // "si" | "no"
   });
 
+  const [requireApproval, setRequireApproval] = useState(true); 
+
+
   // --- Validar SuperAdmin ---
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -165,6 +169,7 @@ export default function SuperAdminPanel() {
         return;
       }
       loadAll();
+      await loadConfigPublications();
     });
     return () => unsub();
   }, []);
@@ -191,6 +196,54 @@ export default function SuperAdminPanel() {
 
     return () => unsub();
   }, []);
+
+    // --- Config: aprobación de publicaciones ---
+  const loadConfigPublications = async () => {
+    try {
+      const cfgRef = doc(db, "settings", "publications");
+      const snap = await getDoc(cfgRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setRequireApproval(
+          data.require_approval !== undefined ? data.require_approval : true
+        );
+      } else {
+        // Por defecto: AHORA dejamos modo automático (sin aprobación)
+        setRequireApproval(false);
+      }
+    } catch (e) {
+      console.error("Error cargando configuración de publicaciones:", e);
+      // si falla, por seguridad dejamos que requiera aprobación
+      setRequireApproval(true);
+    }
+  };
+
+  const toggleRequireApproval = async () => {
+    try {
+      const newValue = !requireApproval;
+      setRequireApproval(newValue);
+
+      const cfgRef = doc(db, "settings", "publications");
+      await setDoc(
+        cfgRef,
+        {
+          require_approval: newValue,
+          updated_at: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      toast.success(
+        newValue
+          ? "Desde ahora las nuevas publicaciones quedarán pendientes hasta que el SuperAdmin las apruebe."
+          : "Desde ahora las publicaciones de usuarios con suscripción activa se aprueban automáticamente."
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar la configuración de publicaciones");
+    }
+  };
+
 
   const loadAll = async () => {
     setLoading(true);
@@ -765,12 +818,36 @@ export default function SuperAdminPanel() {
           </div>
 
           {/* === Publicaciones === */}
-          <TabsContent value="publications">
+                    <TabsContent value="publications">
             <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle>Gestión de Publicaciones</CardTitle>
               </CardHeader>
               <CardContent>
+
+                {/* 🔧 Config aprobación automática / manual */}
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Aprobación de publicaciones
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {requireApproval
+                        ? "Las nuevas publicaciones quedan en estado pending hasta que el SuperAdmin las apruebe."
+                        : "Las publicaciones de usuarios con suscripción activa se crean directamente en estado active."}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleRequireApproval}
+                  >
+                    {requireApproval
+                      ? "Pasar a aprobación automática"
+                      : "Requerir aprobación manual"}
+                  </Button>
+                </div>
+
                 {/* Buscador simple de publicaciones */}
                 <div className="mb-4 relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -781,6 +858,7 @@ export default function SuperAdminPanel() {
                     onChange={(e) => setPubQuery(e.target.value)}
                   />
                 </div>
+
 
                 {filteredPublications.length === 0 ? (
                   <EmptyState
