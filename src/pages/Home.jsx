@@ -744,15 +744,15 @@ export default function Home() {
             ¿Querés publicar tu negocio o servicio?
           </h2>
           <p className="text-xl text-blue-100 mb-8">
-            Convertite en Admin y publicá tus avisos
+            Elegí un plan y empezá a aparecer en ConectCity.
           </p>
-          <Button
-            size="lg"
-            variant="white"
-            className="shadow-xl hover:shadow-2xl"
-          >
-            Contactar para más info
-          </Button>
+          <div className="mt-4">
+            <Link to="/planes-publicar">
+              <Button size="lg" className="rounded-xl" variant="white">
+                Ver planes para publicar
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
     </div>

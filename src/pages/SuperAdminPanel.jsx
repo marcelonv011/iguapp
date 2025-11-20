@@ -15,6 +15,7 @@ import {
   onSnapshot,
   serverTimestamp,
   increment,
+  addDoc,
 } from "firebase/firestore";
 import { db, auth } from "@/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -101,6 +102,20 @@ const RoleBadge = ({ role }) => {
   return <Badge className={`capitalize ${cls}`}>{r}</Badge>;
 };
 
+const ProductTypeBadge = ({ type }) => {
+  const t = type || "publications";
+
+  let label = "Publicaciones";
+  let cls = "bg-blue-100 text-blue-700 border border-blue-200";
+
+  if (t === "restaurant" || t === "restaurants") {
+    label = "Restaurante";
+    cls = "bg-emerald-100 text-emerald-700 border border-emerald-200";
+  }
+
+  return <Badge className={`capitalize ${cls}`}>{label}</Badge>;
+};
+
 const EmptyState = ({ icon: Icon, title, subtitle, action }) => (
   <div className="flex flex-col items-center justify-center text-center py-14">
     <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
@@ -149,8 +164,7 @@ export default function SuperAdminPanel() {
     featured: "no", // "si" | "no"
   });
 
-  const [requireApproval, setRequireApproval] = useState(true); 
-
+  const [requireApproval, setRequireApproval] = useState(true);
 
   // --- Validar SuperAdmin ---
   useEffect(() => {
@@ -197,7 +211,7 @@ export default function SuperAdminPanel() {
     return () => unsub();
   }, []);
 
-    // --- Config: aprobación de publicaciones ---
+  // --- Config: aprobación de publicaciones ---
   const loadConfigPublications = async () => {
     try {
       const cfgRef = doc(db, "settings", "publications");
@@ -243,7 +257,6 @@ export default function SuperAdminPanel() {
       toast.error("No se pudo actualizar la configuración de publicaciones");
     }
   };
-
 
   const loadAll = async () => {
     setLoading(true);
@@ -423,6 +436,43 @@ export default function SuperAdminPanel() {
     await updateDoc(doc(db, "users", id), { role_type });
     toast.success(role_type === "admin" ? "Hecho admin" : "Se quitó admin");
     loadAll();
+  };
+
+  // 👉 Dar 1 mes gratis de suscripción (plan básico)
+  const giveFreeMonthToUser = async (userEmail) => {
+    if (!userEmail) {
+      toast.error("Este usuario no tiene email válido");
+      return;
+    }
+
+    if (!confirm(`¿Dar 1 mes gratis del plan básico a ${userEmail}?`)) return;
+
+    try {
+      const start = new Date();
+      const end = new Date();
+      end.setMonth(end.getMonth() + 1); // +1 mes
+
+      await addDoc(collection(db, "subscriptions"), {
+        user_email: userEmail,
+        product_type: "publications", // 👈 muy importante para que AdminPanel lo vea
+        plan_tier: "basic",
+        plan_type: "mensual",
+        publications_limit: 3, // cambiá 3 por el límite que quieras
+        publications_used: 0,
+        start_date: start,
+        end_date: end,
+        status: "active",
+        payment_id: "free_trial", // sabemos que es gratis
+        billing_status: "trial", // opcional, para tu control
+        created_at: serverTimestamp(),
+      });
+
+      toast.success("Se activó 1 mes gratis para este usuario");
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo crear la suscripción gratis");
+    }
   };
 
   // --- Acciones reportes ---
@@ -818,13 +868,12 @@ export default function SuperAdminPanel() {
           </div>
 
           {/* === Publicaciones === */}
-                    <TabsContent value="publications">
+          <TabsContent value="publications">
             <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle>Gestión de Publicaciones</CardTitle>
               </CardHeader>
               <CardContent>
-
                 {/* 🔧 Config aprobación automática / manual */}
                 <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                   <div>
@@ -858,7 +907,6 @@ export default function SuperAdminPanel() {
                     onChange={(e) => setPubQuery(e.target.value)}
                   />
                 </div>
-
 
                 {filteredPublications.length === 0 ? (
                   <EmptyState
@@ -1061,6 +1109,7 @@ export default function SuperAdminPanel() {
                                         Quitar Admin
                                       </Button>
                                     )}
+
                                     {(!u.role_type ||
                                       u.role_type === "usuario") && (
                                       <Button
@@ -1071,6 +1120,7 @@ export default function SuperAdminPanel() {
                                         Hacer Admin
                                       </Button>
                                     )}
+
                                     {u.role_type === "superadmin" && (
                                       <Button
                                         size="sm"
@@ -1079,6 +1129,19 @@ export default function SuperAdminPanel() {
                                         title="No se puede modificar a superadmin"
                                       >
                                         SuperAdmin
+                                      </Button>
+                                    )}
+
+                                    {/* 👉 Nuevo botón: 1 mes gratis */}
+                                    {u.email && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          giveFreeMonthToUser(u.email)
+                                        }
+                                      >
+                                        1 mes gratis
                                       </Button>
                                     )}
                                   </div>
@@ -1116,6 +1179,7 @@ export default function SuperAdminPanel() {
                           <TableHeader className="sticky top-0 bg-white z-10">
                             <TableRow>
                               <TableHead>Usuario</TableHead>
+                              <TableHead>Tipo</TableHead>
                               <TableHead>Monto</TableHead>
                               <TableHead className="hidden sm:table-cell">
                                 Inicio
@@ -1127,25 +1191,47 @@ export default function SuperAdminPanel() {
                               <TableHead className="w-40">Acciones</TableHead>
                             </TableRow>
                           </TableHeader>
+
                           <TableBody>
                             {subscriptions.map((s) => (
                               <TableRow
                                 key={s.id}
                                 className="hover:bg-slate-50/60"
                               >
+                                {/* Usuario */}
                                 <TableCell>{s.user_email || "—"}</TableCell>
+
+                                {/* Tipo (publicaciones / restaurante) */}
+                                <TableCell>
+                                  <ProductTypeBadge
+                                    type={
+                                      s.product_type ||
+                                      (s.plan_type?.includes("restaurant")
+                                        ? "restaurant"
+                                        : "publications")
+                                    }
+                                  />
+                                </TableCell>
+
+                                {/* Monto */}
                                 <TableCell className="font-medium">
                                   ${Number(s.amount || 0).toLocaleString()}
                                 </TableCell>
+
+                                {/* Fechas */}
                                 <TableCell className="hidden sm:table-cell text-sm">
                                   {fmtDate(s.start_date)}
                                 </TableCell>
                                 <TableCell className="hidden sm:table-cell text-sm">
                                   {fmtDate(s.end_date)}
                                 </TableCell>
+
+                                {/* Estado */}
                                 <TableCell>
                                   <StatusBadge status={s.status} />
                                 </TableCell>
+
+                                {/* Acciones */}
                                 <TableCell>
                                   <div className="flex items-center gap-2">
                                     {s.status !== "active" && (

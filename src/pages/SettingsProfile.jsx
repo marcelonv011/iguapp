@@ -178,7 +178,6 @@ export default function SettingsProfile() {
 
     setDeleting(true);
     try {
-      // 1) Borrar documento en Firestore
       // 1) Borrar documento en Firestore (SIN .catch)
       const userRef = doc(db, "users", u.uid);
       await deleteDoc(userRef); // si falla, salta al catch grande

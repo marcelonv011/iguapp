@@ -27,6 +27,7 @@ import Delivery from "@/pages/Delivery.jsx";
 import GestionarRestaurante from "@/pages/GestionarRestaurante";
 import RestaurantMenu from "@/pages/RestaurantMenu.jsx";
 import MisPedidos from "@/pages/MisPedidos";
+import Planes from "@/pages/Planes";
 
 import "./index.css";
 
@@ -85,6 +86,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/registro" element={<Registro />} />
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
+              <Route path="/planes-publicar" element={<Planes />} />
+
               {/* 🔒 Protegidas */}
               <Route
                 path="/admin"
