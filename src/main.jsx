@@ -87,7 +87,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
               <Route path="/planes-publicar" element={<Planes />} />
-
               {/* 🔒 Protegidas */}
               <Route
                 path="/admin"
