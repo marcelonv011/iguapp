@@ -13,6 +13,8 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
+  addDoc,
+  runTransaction,
 } from "firebase/firestore";
 
 // UI
@@ -23,6 +25,7 @@ import {
   Truck,
   XCircle,
   AlertCircle,
+  Star,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
@@ -36,6 +39,10 @@ export default function MisPedidos() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState(""); // YYYY-MM-DD
+  const [reviewingOrderId, setReviewingOrderId] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const navigate = useNavigate();
 
@@ -151,12 +158,91 @@ export default function MisPedidos() {
         customer_confirmed: true,
         updatedAt: serverTimestamp(),
       });
+
       toast.success("¡Gracias por confirmar tu pedido! 😊");
+
+      // 👇 Abrimos directamente el formulario de reseña para este pedido
+      setReviewingOrderId(orderId);
+      setReviewRating(5);
+      setReviewComment("");
     } catch (error) {
       console.error("Error al marcar como recibido:", error);
       toast.error("No se pudo marcar como recibido. Intentá de nuevo.");
     }
   };
+
+  const handleSubmitReview = async (order) => {
+  if (!user) {
+    toast.error("Debés iniciar sesión para dejar una reseña");
+    return;
+  }
+  if (!reviewRating || reviewRating < 1 || reviewRating > 5) {
+    toast.error("Elegí una puntuación de 1 a 5 estrellas");
+    return;
+  }
+
+  const restaurantId = order.restaurant_id;
+  const restaurantRef = doc(db, "restaurants", restaurantId);
+
+  try {
+    setSubmittingReview(true);
+
+    // 1) Crear reseña en restaurant_reviews
+    await addDoc(collection(db, "restaurant_reviews"), {
+      restaurant_id: restaurantId,
+      restaurant_name: order.restaurant_name || "",
+      order_id: order.id,
+      user_uid: user.uid,
+      user_email: user.email || null,
+      user_name: user.displayName || order.customer_name || "",
+      rating: reviewRating,
+      comment: reviewComment.trim(),
+      created_at: serverTimestamp(),
+    });
+
+    // 2) Actualizar rating acumulado del restaurante
+    await runTransaction(db, async (tx) => {
+      const restSnap = await tx.get(restaurantRef);
+      if (!restSnap.exists()) {
+        throw new Error("Restaurante no encontrado");
+      }
+
+      const data = restSnap.data();
+      let count = data.rating_count || 0;
+      let sum = data.rating_sum || 0;
+
+      count += 1;
+      sum += reviewRating;
+
+      const avg = count > 0 ? sum / count : 0;
+
+      tx.update(restaurantRef, {
+        rating_count: count,
+        rating_sum: sum,
+        rating: avg,
+      });
+    });
+
+    // 3) Marcar el pedido como reseñado
+    await updateDoc(doc(db, "orders", order.id), {
+      review_submitted: true,
+      updatedAt: serverTimestamp(),
+    });
+
+    toast.success("¡Gracias por tu reseña!");
+
+    // Resetear estado del formulario
+    setReviewingOrderId(null);
+    setReviewRating(5);
+    setReviewComment("");
+  } catch (err) {
+    console.error("Error al guardar reseña:", err);
+    toast.error("No se pudo guardar la reseña. Intentá de nuevo.");
+  } finally {
+    setSubmittingReview(false);
+  }
+};
+
 
   // === 1) Filtrar por fecha solamente (para usar en contadores + lista) ===
   const dateFilteredOrders = useMemo(() => {
@@ -482,6 +568,91 @@ export default function MisPedidos() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Reseña (solo si entregado, confirmado y aún sin reseña) */}
+                    {isDelivered && isConfirmed && !order.review_submitted && (
+                      <div className="pt-4 border-t">
+                        {reviewingOrderId !== order.id ? (
+                          // Botón inicial "Dejar reseña"
+                          <div className="flex justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                              onClick={() => {
+                                setReviewingOrderId(order.id);
+                                setReviewRating(5);
+                                setReviewComment("");
+                              }}
+                            >
+                              Dejar reseña
+                            </Button>
+                          </div>
+                        ) : (
+                          // Formulario de reseña
+                          <div className="space-y-3">
+                            <p className="text-sm font-semibold text-slate-700">
+                              ¿Qué te pareció {order.restaurant_name}?
+                            </p>
+
+                            {/* Estrellas */}
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setReviewRating(star)}
+                                  className="p-1"
+                                >
+                                  <Star
+                                    className={`w-5 h-5 ${
+                                      star <= reviewRating
+                                        ? "fill-yellow-400 text-yellow-400"
+                                        : "text-slate-300"
+                                    }`}
+                                  />
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Comentario */}
+                            <textarea
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                              rows={3}
+                              placeholder="Contá brevemente tu experiencia (opcional)"
+                              value={reviewComment}
+                              onChange={(e) => setReviewComment(e.target.value)}
+                            />
+
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setReviewingOrderId(null);
+                                  setReviewComment("");
+                                }}
+                                disabled={submittingReview}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-slate-900 text-white hover:bg-slate-800"
+                                onClick={() => handleSubmitReview(order)}
+                                disabled={submittingReview}
+                              >
+                                {submittingReview
+                                  ? "Enviando..."
+                                  : "Enviar reseña"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Acción: marcar como recibido */}
                     {isDelivered && !isConfirmed && (

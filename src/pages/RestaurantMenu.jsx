@@ -44,6 +44,8 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  orderBy,
+  deleteDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -52,6 +54,8 @@ export default function RestaurantMenu() {
   const { restaurantId } = useParams();
 
   const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null); // "superadmin", "admin", "usuario", etc.
+  const isSuperAdmin = userRole === "superadmin";
 
   const [restaurant, setRestaurant] = useState(null);
   const [restaurantLoading, setRestaurantLoading] = useState(true);
@@ -67,14 +71,17 @@ export default function RestaurantMenu() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNumber, setDeliveryNumber] = useState("");
   const [deliveryCity, setDeliveryCity] = useState("Puerto Iguazú"); // podés cambiar el default
-
-  const [mapLink, setMapLink] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [notes, setNotes] = useState("");
   const [creatingOrder, setCreatingOrder] = useState(false);
 
   const [currentCoords, setCurrentCoords] = useState(null); // { lat, lng } | null
   const [geoLoading, setGeoLoading] = useState(false);
+  // RESEÑAS
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+
+  const [mapLink, setMapLink] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [notes, setNotes] = useState("");
 
   // ==========================
   //  Auth: cargar usuario
@@ -85,11 +92,25 @@ export default function RestaurantMenu() {
         setUser(fbUser);
         setCustomerName(fbUser.displayName || "");
         setCustomerPhone(fbUser.phoneNumber || "");
+        // Cargar rol desde /users/{uid}
+        try {
+          const userRef = doc(db, "users", fbUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            setUserRole(data.role_type || "usuario");
+          } else {
+            setUserRole("usuario");
+          }
+        } catch (e) {
+          console.error("Error cargando rol de usuario:", e);
+          setUserRole("usuario");
+        }
       } else {
         setUser(null);
+        setUserRole(null);
       }
     });
-
     return () => unsub();
   }, []);
 
@@ -147,6 +168,34 @@ export default function RestaurantMenu() {
     };
 
     loadMenu();
+  }, [restaurantId]);
+
+  // ==========================
+  //  Cargar reseñas del restaurante
+  // ==========================
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const loadReviews = async () => {
+      setReviewsLoading(true);
+
+      try {
+        const qRef = query(
+          collection(db, "restaurant_reviews"),
+          where("restaurant_id", "==", restaurantId),
+          orderBy("createdAt", "desc")
+        );
+
+        const snap = await getDocs(qRef);
+        setReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Error cargando reseñas:", err);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    loadReviews();
   }, [restaurantId]);
 
   // ==========================
@@ -447,6 +496,27 @@ export default function RestaurantMenu() {
     if (!el) return;
     const y = el.getBoundingClientRect().top + window.scrollY - 160;
     window.scrollTo({ top: y, behavior: "smooth" });
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!user || !isSuperAdmin) return;
+
+    const confirmed = window.confirm(
+      "¿Seguro que querés eliminar esta reseña?"
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, "restaurant_reviews", reviewId));
+
+      // Actualizamos estado local
+      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+
+      toast.success("Reseña eliminada");
+    } catch (error) {
+      console.error("Error eliminando reseña:", error);
+      toast.error("No se pudo eliminar la reseña");
+    }
   };
 
   return (
@@ -1015,6 +1085,68 @@ export default function RestaurantMenu() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ==========================
+   RESEÑAS DEL RESTAURANTE (solo mostrar)
+========================== */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+        <h2 className="text-2xl font-bold mb-4">Reseñas</h2>
+
+        {reviewsLoading ? (
+          <p className="text-slate-500 text-sm">Cargando reseñas...</p>
+        ) : reviews.length === 0 ? (
+          <p className="text-slate-500 text-sm">
+            Este restaurante aún no tiene reseñas.
+          </p>
+        ) : (
+          <div className="space-y-4">
+  {reviews.map((r) => (
+    <Card key={r.id} className="bg-slate-50 border">
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start gap-2">
+          {/* Nombre + estrellas */}
+          <div>
+            <p className="font-semibold">{r.user_name}</p>
+            <div className="flex gap-1 mt-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  className={`w-4 h-4 ${
+                    r.rating >= n
+                      ? "text-yellow-400 fill-yellow-400"
+                      : "text-slate-300"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Botón eliminar solo para superadmin */}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => handleDeleteReview(r.id)}
+              className="text-xs text-red-600 hover:text-red-700 hover:underline"
+            >
+              Eliminar
+            </button>
+          )}
+        </div>
+
+        {r.comment && <p className="text-sm mt-2">{r.comment}</p>}
+
+        {r.createdAt?.toDate && (
+          <p className="text-xs text-slate-400 mt-1">
+            {r.createdAt.toDate().toLocaleString()}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  ))}
+</div>
+
+        )}
       </div>
 
       {/* Botón flotante de carrito en mobile */}
