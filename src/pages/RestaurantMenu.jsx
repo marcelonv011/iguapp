@@ -1101,51 +1101,50 @@ export default function RestaurantMenu() {
           </p>
         ) : (
           <div className="space-y-4">
-  {reviews.map((r) => (
-    <Card key={r.id} className="bg-slate-50 border">
-      <CardContent className="p-4">
-        <div className="flex justify-between items-start gap-2">
-          {/* Nombre + estrellas */}
-          <div>
-            <p className="font-semibold">{r.user_name}</p>
-            <div className="flex gap-1 mt-1">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Star
-                  key={n}
-                  className={`w-4 h-4 ${
-                    r.rating >= n
-                      ? "text-yellow-400 fill-yellow-400"
-                      : "text-slate-300"
-                  }`}
-                />
-              ))}
-            </div>
+            {reviews.map((r) => (
+              <Card key={r.id} className="bg-slate-50 border">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start gap-2">
+                    {/* Nombre + estrellas */}
+                    <div>
+                      <p className="font-semibold">{r.user_name}</p>
+                      <div className="flex gap-1 mt-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star
+                            key={n}
+                            className={`w-4 h-4 ${
+                              r.rating >= n
+                                ? "text-yellow-400 fill-yellow-400"
+                                : "text-slate-300"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Botón eliminar solo para superadmin */}
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReview(r.id)}
+                        className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
+
+                  {r.comment && <p className="text-sm mt-2">{r.comment}</p>}
+
+                  {r.createdAt?.toDate && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      {r.createdAt.toDate().toLocaleString()}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
           </div>
-
-          {/* Botón eliminar solo para superadmin */}
-          {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => handleDeleteReview(r.id)}
-              className="text-xs text-red-600 hover:text-red-700 hover:underline"
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
-
-        {r.comment && <p className="text-sm mt-2">{r.comment}</p>}
-
-        {r.createdAt?.toDate && (
-          <p className="text-xs text-slate-400 mt-1">
-            {r.createdAt.toDate().toLocaleString()}
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  ))}
-</div>
-
         )}
       </div>
 

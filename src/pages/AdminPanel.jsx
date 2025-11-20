@@ -643,7 +643,8 @@ export default function AdminPanel() {
   const loadSubscription = async (email) => {
     const qSub = query(
       collection(db, "subscriptions"),
-      where("user_email", "==", email)
+      where("user_email", "==", email),
+      where("product_type", "==", "publications")
     );
     const snap = await getDocs(qSub);
 
@@ -735,9 +736,8 @@ export default function AdminPanel() {
     if (typeof subscription?.publications_used === "number") {
       raw = subscription.publications_used;
     } else {
-      raw = thisMonthCount;
+      raw = thisMonthCount; // viejo comportamiento
     }
-    // Nunca dejar que sea negativo
     return raw < 0 ? 0 : raw;
   }, [subscription, thisMonthCount]);
 
@@ -827,7 +827,7 @@ export default function AdminPanel() {
     }
   };
 
-    const handleSubmit = async (ev) => {
+  const handleSubmit = async (ev) => {
     ev.preventDefault();
 
     // 1) Validar suscripción
@@ -971,7 +971,6 @@ export default function AdminPanel() {
       toast.error("Error guardando la publicación");
     }
   };
-
 
   const handleEdit = (p) => {
     setEditing(p);

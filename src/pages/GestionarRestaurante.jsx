@@ -180,71 +180,85 @@ export default function GestionarRestaurante() {
     loadRestaurant();
   }, [user]);
 
-  // ===== Cargar suscripción del usuario =====
-useEffect(() => {
-  if (!user) return;
+  // ===== Cargar suscripción del usuario (solo RESTAURANTE) =====
+  useEffect(() => {
+    if (!user) return;
 
-  const loadSubscription = async () => {
-    setSubLoading(true);
+    const loadSubscription = async () => {
+      setSubLoading(true);
 
-    try {
-      const qSub = query(
-        collection(db, "subscriptions"),
-        where("user_email", "==", user.email)
-      );
+      try {
+        const qSub = query(
+          collection(db, "subscriptions"),
+          where("user_email", "==", user.email)
+        );
 
-      const snap = await getDocs(qSub);
+        const snap = await getDocs(qSub);
 
-      if (snap.empty) {
+        if (snap.empty) {
+          setSubscription(null);
+          setSubscriptionExpired(true);
+          return;
+        }
+
+        // Traemos todas las suscripciones del usuario
+        const allSubs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // 👇 Nos quedamos SOLO con las de restaurante
+        // Ejemplos esperados:
+        //   plan_type: "restaurant_monthly" o "restaurant_yearly"
+        const restaurantSubs = allSubs.filter(
+          (s) => s.plan_type && s.plan_type.startsWith("restaurant")
+        );
+
+        if (restaurantSubs.length === 0) {
+          // Tiene planes de publicaciones, pero NO de restaurante
+          setSubscription(null);
+          setSubscriptionExpired(true);
+          return;
+        }
+
+        // De las de restaurante, elegimos la que tenga mayor end_date
+        const best = restaurantSubs.reduce((best, cur) => {
+          if (!cur.end_date) return best;
+          if (!best || !best.end_date) return cur;
+
+          const ms = cur.end_date?.toDate?.()
+            ? cur.end_date.toDate().getTime()
+            : cur.end_date?.seconds
+            ? cur.end_date.seconds * 1000
+            : new Date(cur.end_date).getTime();
+
+          const bestMs = best.end_date?.toDate?.()
+            ? best.end_date.toDate().getTime()
+            : best.end_date?.seconds
+            ? best.end_date.seconds * 1000
+            : new Date(best.end_date).getTime();
+
+          return ms > bestMs ? cur : best;
+        }, null);
+
+        if (!best || !best.end_date) {
+          setSubscription(null);
+          setSubscriptionExpired(true);
+          return;
+        }
+
+        const expired = isExpired(best.end_date);
+
+        setSubscription(best);
+        setSubscriptionExpired(expired);
+      } catch (e) {
+        console.error("Error cargando suscripción restaurante:", e);
         setSubscription(null);
         setSubscriptionExpired(true);
-        return;
+      } finally {
+        setSubLoading(false);
       }
+    };
 
-      const docs = snap.docs.map((d) => d.data());
-
-      // 👇 elegir la suscripción con mayor end_date, manejando bien el "best"
-      const best = docs.reduce((best, cur) => {
-        if (!cur.end_date) return best;          // ignorar docs sin end_date
-        if (!best || !best.end_date) return cur; // primera válida
-
-        const ms = cur.end_date?.toDate?.()
-          ? cur.end_date.toDate().getTime()
-          : cur.end_date?.seconds
-          ? cur.end_date.seconds * 1000
-          : new Date(cur.end_date).getTime();
-
-        const bestMs = best.end_date?.toDate?.()
-          ? best.end_date.toDate().getTime()
-          : best.end_date?.seconds
-          ? best.end_date.seconds * 1000
-          : new Date(best.end_date).getTime();
-
-        return ms > bestMs ? cur : best;
-      }, null);
-
-      if (!best || !best.end_date) {
-        setSubscription(null);
-        setSubscriptionExpired(true);
-        return;
-      }
-
-      const expired = isExpired(best.end_date);
-
-      setSubscription(best);
-      setSubscriptionExpired(expired);
-    } catch (e) {
-      console.error("Error cargando suscripción:", e);
-      // si querés, podrías ponerla como activa por defecto en caso de error
-      // setSubscriptionExpired(false);
-    } finally {
-      setSubLoading(false);
-    }
-  };
-
-  loadSubscription();
-}, [user]);
-
+    loadSubscription();
+  }, [user]);
 
   // ==========================
   //  Cargar items del menú
@@ -664,7 +678,7 @@ useEffect(() => {
                 <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
                 <div>
                   <h3 className="font-semibold text-red-700">
-                    Suscripción inactiva / vencida
+                    Plan de restaurante inactivo / vencido
                   </h3>
                   <p className="text-sm text-red-700 mt-1">
                     Tu restaurante NO aparece en la app de Delivery.
