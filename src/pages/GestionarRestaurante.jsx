@@ -1,5 +1,5 @@
 // src/pages/GestionarRestaurante.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -621,14 +621,13 @@ export default function GestionarRestaurante() {
     window.location.href = url;
   };
 
-  const getOrderStatusConfig = (status) => {
+    const getOrderStatusConfig = (status) => {
     const configs = {
       pending: {
         label: "Pendiente",
         icon: AlertCircle,
         color: "bg-yellow-500",
       },
-      // 🔹 NUEVO: pago confirmado (por transferencia, etc.)
       paid: {
         label: "Pago confirmado",
         icon: CheckCircle,
@@ -646,7 +645,25 @@ export default function GestionarRestaurante() {
     return configs[status] || configs.pending;
   };
 
-  // ==========================
+  // 👉 Agrupar items del menú por categoría (Pizzas, Bebidas, etc.)
+  const menuItemsByCategory = useMemo(() => {
+    const groups = {};
+
+    menuItems.forEach((item) => {
+      const raw = (item.category || "").trim();
+      const category = raw || "Sin categoría";
+
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(item);
+    });
+
+    return Object.entries(groups)
+      .sort((a, b) => a[0].localeCompare(b[0], "es"))
+      .map(([category, items]) => ({ category, items }));
+  }, [menuItems]);
+
+
+    // ==========================
   //  Render
   // ==========================
   if (authLoading) {
@@ -1040,80 +1057,99 @@ export default function GestionarRestaurante() {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {menuItems.map((item) => (
-                        <Card
-                          key={item.id}
-                          className="overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg transition-shadow bg-white"
-                        >
-                          {item.image_url && (
-                            <div className="h-40 overflow-hidden">
-                              <img
-                                src={item.image_url}
-                                alt={item.name}
-                                className="w-full h-full object-cover hover:scale-105 transition-transform"
-                              />
-                            </div>
-                          )}
-                          <CardContent className="p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1">
-                                <h3 className="font-bold text-lg text-slate-900">
-                                  {item.name}
-                                </h3>
-                                {item.category && (
-                                  <Badge
-                                    variant="outline"
-                                    className="mt-1 text-xs"
-                                  >
-                                    {item.category}
-                                  </Badge>
+                    <div className="space-y-8">
+                      {menuItemsByCategory.map(({ category, items }) => (
+                        <section key={category} className="space-y-3">
+                          {/* Título de la sección (ej: Pizzas, Bebidas) */}
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">
+                              {category}
+                            </h3>
+                            <span className="text-xs text-slate-500">
+                              {items.length} producto{items.length !== 1 && "s"}
+                            </span>
+                          </div>
+
+                          {/* Grid de productos dentro de esa sección */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {items.map((item) => (
+                              <Card
+                                key={item.id}
+                                className="overflow-hidden border border-slate-100 shadow-sm hover:shadow-lg transition-shadow bg-white"
+                              >
+                                {item.image_url && (
+                                  <div className="h-40 overflow-hidden">
+                                    <img
+                                      src={item.image_url}
+                                      alt={item.name}
+                                      className="w-full h-full object-cover hover:scale-105 transition-transform"
+                                    />
+                                  </div>
                                 )}
-                              </div>
-                              <Badge
-                                className={
-                                  item.available
-                                    ? "bg-emerald-500"
-                                    : "bg-slate-500"
-                                }
-                              >
-                                {item.available
-                                  ? "Disponible"
-                                  : "No disponible"}
-                              </Badge>
-                            </div>
+                                <CardContent className="p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      <h3 className="font-bold text-lg text-slate-900">
+                                        {item.name}
+                                      </h3>
+                                      {item.category && (
+                                        <Badge
+                                          variant="outline"
+                                          className="mt-1 text-xs"
+                                        >
+                                          {item.category}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <Badge
+                                      className={
+                                        item.available
+                                          ? "bg-emerald-500"
+                                          : "bg-slate-500"
+                                      }
+                                    >
+                                      {item.available
+                                        ? "Disponible"
+                                        : "No disponible"}
+                                    </Badge>
+                                  </div>
 
-                            {item.description && (
-                              <p className="text-sm text-slate-600 line-clamp-2">
-                                {item.description}
-                              </p>
-                            )}
+                                  {item.description && (
+                                    <p className="text-sm text-slate-600 line-clamp-2">
+                                      {item.description}
+                                    </p>
+                                  )}
 
-                            <p className="text-2xl font-bold text-red-600">
-                              ${Number(item.price).toLocaleString()}
-                            </p>
+                                  <p className="text-2xl font-bold text-red-600">
+                                    ${Number(item.price).toLocaleString()}
+                                  </p>
 
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => handleEditMenuItem(item)}
-                              >
-                                <Edit className="w-4 h-4 mr-1" />
-                                Editar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-red-600 hover:bg-red-50"
-                                onClick={() => handleDeleteMenuItem(item.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1"
+                                      onClick={() => handleEditMenuItem(item)}
+                                    >
+                                      <Edit className="w-4 h-4 mr-1" />
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-red-600 hover:bg-red-50"
+                                      onClick={() =>
+                                        handleDeleteMenuItem(item.id)
+                                      }
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        </section>
                       ))}
                     </div>
                   )}
