@@ -33,7 +33,8 @@ import { db, auth } from "@/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { Badge } from "@/ui/badge";
-import { useQueryClient } from "@tanstack/react-query"; // 👈 NUEVO
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner"; // 👈 NUEVO
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -43,7 +44,7 @@ export default function Layout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profile, setProfile] = useState(null);
 
-  const queryClient = useQueryClient(); // 👈 NUEVO
+  const queryClient = useQueryClient();
 
   // Helper para invalidar keys
   const invalidate = (key) => {
@@ -71,7 +72,6 @@ export default function Layout({ children }) {
         invalidate("emprendimientos");
         break;
       case "Delivery":
-        // Ajustá estos keys si en Delivery usás otro nombre
         invalidate("delivery");
         invalidate("restaurants");
         invalidate("featured-restaurants");
@@ -99,6 +99,26 @@ export default function Layout({ children }) {
 
     return () => unsub();
   }, [user]);
+
+  // === LEER ?payment=... AL VOLVER DE MERCADO PAGO ===
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const status = params.get("payment");
+    if (!status) return;
+
+    if (status === "success") {
+      toast.success("Pago aprobado 🎉. Tu plan se está activando.");
+    } else if (status === "failure") {
+      toast.error("No pudimos procesar tu pago. Probá con otro medio.");
+    } else if (status === "pending") {
+      toast("Tu pago quedó pendiente en Mercado Pago.");
+    }
+
+    // Limpiar el parámetro para que no vuelva a dispararse
+    const url = new URL(window.location.href);
+    url.searchParams.delete("payment");
+    window.history.replaceState({}, "", url.pathname + url.search);
+  }, [location.search]);
 
   // === Helpers: nombre e iniciales ===
   const displayName = useMemo(() => {

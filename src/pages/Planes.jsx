@@ -33,8 +33,9 @@ export default function Planes() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            plan_type, // "publications_basic" | "publications_intermediate" | "publications_pro" | "restaurant_mensual"
+            plan_type,
             user_email: user.email,
+            user_id: user.id || user.uid, // según cómo te venga del hook
           }),
         }
       );
@@ -190,8 +191,7 @@ export default function Planes() {
 
             {/* 🟪 PLAN PROFESIONAL */}
             <Card className="flex flex-col rounded-2xl border-slate-200 shadow-md relative overflow-hidden bg-gradient-to-b from-purple-50 via-white to-white">
-              <div className="absolute right-4 top-4">
-              </div>
+              <div className="absolute right-4 top-4"></div>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-purple-700">
                   <Star className="w-5 h-5 text-purple-600" />
@@ -252,16 +252,15 @@ export default function Planes() {
                 Plan para restaurantes y delivery
               </h2>
               <p className="text-xs text-slate-500">
-                Para locales gastronómicos que quieren recibir pedidos
-                desde ConectCity.
+                Para locales gastronómicos que quieren recibir pedidos desde
+                ConectCity.
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
             <Card className="flex flex-col rounded-2xl border-slate-200 shadow-sm relative overflow-hidden bg-gradient-to-r from-emerald-50 via-white to-white">
-              <div className="absolute right-4 top-4">
-              </div>
+              <div className="absolute right-4 top-4"></div>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Store className="w-5 h-5 text-emerald-600" />

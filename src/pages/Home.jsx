@@ -1,10 +1,10 @@
 // src/pages/Home.jsx
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl, asARS } from "@/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthUser } from "@/hooks/useAuthUser";
-
+import { toast } from "sonner";
 import {
   Briefcase,
   Building2,
@@ -298,6 +298,37 @@ async function fetchHomeFeaturedRestaurants() {
 export default function Home() {
   const { user, loadingUser } = useAuthUser();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const goToLogin = () => navigate("/login");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+
+    if (paymentStatus === "success") {
+      // Borramos el query param y vamos al home limpio
+      navigate("/", { replace: true });
+    }
+  }, []);
+
+    useEffect(() => {
+    const payment = searchParams.get("payment");
+    if (!payment) return;
+
+    if (payment === "success") {
+      toast.success("Pago realizado con éxito. Tu plan ya está activo 🎉");
+    } else if (payment === "failure") {
+      toast.error("El pago falló o fue cancelado.");
+    } else if (payment === "pending") {
+      toast("Tu pago quedó pendiente. Cuando se apruebe se activará el plan.");
+    }
+
+    // Limpio los parámetros para volver a "/" pelado
+    setSearchParams({});
+  }, [searchParams, setSearchParams]);
+
+
   // Publicaciones destacadas (con filtro de suscripción)
   const { data: publications = [], isLoading: loadingPubs } = useQuery({
     queryKey: ["featured-publications"],
@@ -350,9 +381,6 @@ export default function Home() {
       href: createPageUrl("Delivery"),
     },
   ];
-
-  const navigate = useNavigate();
-  const goToLogin = () => navigate("/login");
 
   return (
     <div className="min-h-screen">

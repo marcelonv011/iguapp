@@ -1,3 +1,5 @@
 # Ignorar todos los .env
 .env
 .env.*
+serviceAccount.json
+
