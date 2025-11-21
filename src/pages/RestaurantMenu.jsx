@@ -50,6 +50,12 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 
 const MP_COMMISSION_RATE = 0.0629; // 6,29%
+// Misma fórmula que el backend: el cliente paga la comisión real
+const calcularMpCommissionCorrecta = (montoNeto) => {
+  const tasa = MP_COMMISSION_RATE;
+  return Number((montoNeto / (1 - tasa) - montoNeto).toFixed(2));
+};
+
 
 export default function RestaurantMenu() {
   const navigate = useNavigate();
@@ -368,10 +374,11 @@ export default function RestaurantMenu() {
 
   // Monto de comisión MP (solo si elige Mercado Pago)
   const getMpCommission = () => {
-    if (paymentMethod !== "mp") return 0;
-    const base = getBaseTotal();
-    return base * MP_COMMISSION_RATE;
-  };
+  if (paymentMethod !== "mp") return 0;
+  const base = getBaseTotal(); // productos + envío
+  return calcularMpCommissionCorrecta(base);
+};
+
 
   // Total final que se cobra al usuario
   const getFinalTotal = () => {
@@ -747,340 +754,376 @@ export default function RestaurantMenu() {
                 </Button>
               </SheetTrigger>
 
-              <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+              <SheetContent className="w-full sm:max-w-lg flex flex-col">
                 <SheetHeader>
-                  <SheetTitle>Tu pedido en {restaurant.name}</SheetTitle>
+                  <SheetTitle className="text-left">
+                    Tu pedido en{" "}
+                    <span className="font-bold text-red-600">
+                      {restaurant.name}
+                    </span>
+                  </SheetTitle>
                 </SheetHeader>
 
                 {cart.length === 0 ? (
-                  <div className="text-center py-12">
+                  <div className="flex-1 flex flex-col items-center justify-center text-center">
                     <ShoppingCart className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-600">Tu carrito está vacío</p>
+                    <p className="text-slate-600 font-medium">
+                      Tu carrito está vacío
+                    </p>
                     <p className="text-xs text-slate-400">
-                      Agregá productos desde el menú
+                      Agregá productos desde el menú para comenzar tu pedido.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-6 mt-6 pb-6">
-                    {/* Items del carrito */}
-                    <div className="space-y-3">
-                      {cart.map((item) => (
-                        <Card key={item.id} className="border-slate-200">
-                          <CardContent className="p-4">
-                            <div className="flex items-start gap-3">
-                              {item.image_url && (
-                                <img
-                                  src={item.image_url}
-                                  alt={item.name}
-                                  className="w-16 h-16 object-cover rounded-lg"
-                                />
-                              )}
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-slate-900">
-                                  {item.name}
-                                </h4>
-                                <p className="text-sm text-slate-600">
-                                  ${item.price.toLocaleString()}
-                                </p>
-
-                                <div className="flex items-center gap-3 mt-2">
-                                  <div className="flex items-center gap-2 bg-slate-100 rounded-full px-1.5">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      onClick={() =>
-                                        updateQuantity(item.id, -1)
-                                      }
-                                    >
-                                      <Minus className="w-4 h-4" />
-                                    </Button>
-                                    <span className="font-semibold w-8 text-center text-sm">
-                                      {item.quantity}
-                                    </span>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      onClick={() => updateQuantity(item.id, 1)}
-                                    >
-                                      <Plus className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-7 w-7 text-red-600 hover:bg-red-50"
-                                    onClick={() => removeFromCart(item.id)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                              <div className="font-semibold text-sm">
-                                ${(item.price * item.quantity).toLocaleString()}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                  <>
+                    {/* Resumen rápido arriba */}
+                    <div className="mt-4 mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                          Resumen del carrito
+                        </p>
+                        <p className="text-sm text-slate-700">
+                          {totalItemsCart}{" "}
+                          {totalItemsCart === 1 ? "artículo" : "artículos"} ·{" "}
+                          <span className="font-semibold">
+                            ${getCartTotal().toLocaleString()}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] text-slate-500">
+                          Total estimado
+                        </p>
+                        <p className="text-lg font-bold text-red-600">
+                          ${getFinalTotal().toLocaleString()}
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Datos de entrega */}
-                    <Card className="border-slate-200">
-                      <CardContent className="p-4 space-y-4">
-                        <h3 className="font-semibold text-slate-900">
-                          Datos de entrega
-                        </h3>
+                    <div className="flex-1 overflow-y-auto pb-4 space-y-5">
+                      {/* Items del carrito */}
+                      <div className="space-y-3">
+                        {cart.map((item) => (
+                          <Card
+                            key={item.id}
+                            className="border-slate-200 shadow-xs hover:shadow-md transition-shadow rounded-2xl"
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start gap-3">
+                                {item.image_url && (
+                                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0">
+                                    <img
+                                      src={item.image_url}
+                                      alt={item.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                )}
+                                <div className="flex-1">
+                                  <div className="flex justify-between gap-2">
+                                    <div>
+                                      <h4 className="font-semibold text-slate-900 text-sm">
+                                        {item.name}
+                                      </h4>
+                                      <p className="text-xs text-slate-500 mt-0.5">
+                                        ${item.price.toLocaleString()} c/u
+                                      </p>
+                                    </div>
+                                    <div className="text-sm font-semibold text-slate-900">
+                                      $
+                                      {(
+                                        item.price * item.quantity
+                                      ).toLocaleString()}
+                                    </div>
+                                  </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <Label
-                              htmlFor="name"
-                              className="text-xs text-slate-600"
-                            >
-                              Nombre completo
-                            </Label>
-                            <Input
-                              id="name"
-                              value={customerName}
-                              onChange={(e) => setCustomerName(e.target.value)}
-                              placeholder="Tu nombre"
-                              className="mt-1"
-                            />
+                                  <div className="flex items-center justify-between mt-3">
+                                    <div className="flex items-center gap-2 bg-slate-100 rounded-full px-1.5 py-1">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7"
+                                        onClick={() =>
+                                          updateQuantity(item.id, -1)
+                                        }
+                                      >
+                                        <Minus className="w-4 h-4" />
+                                      </Button>
+                                      <span className="font-semibold w-8 text-center text-sm">
+                                        {item.quantity}
+                                      </span>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7"
+                                        onClick={() =>
+                                          updateQuantity(item.id, 1)
+                                        }
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7 text-red-600 hover:bg-red-50"
+                                      onClick={() => removeFromCart(item.id)}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+
+                      {/* Datos de entrega */}
+                      <Card className="border-slate-200 rounded-2xl">
+                        <CardContent className="p-4 space-y-4">
+                          <h3 className="font-semibold text-slate-900 text-sm">
+                            Datos de entrega
+                          </h3>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <Label
+                                htmlFor="name"
+                                className="text-xs text-slate-600"
+                              >
+                                Nombre completo
+                              </Label>
+                              <Input
+                                id="name"
+                                value={customerName}
+                                onChange={(e) =>
+                                  setCustomerName(e.target.value)
+                                }
+                                placeholder="Tu nombre"
+                                className="mt-1"
+                              />
+                            </div>
+
+                            <div>
+                              <Label
+                                htmlFor="phone"
+                                className="text-xs text-slate-600"
+                              >
+                                Teléfono
+                              </Label>
+                              <Input
+                                id="phone"
+                                value={customerPhone}
+                                onChange={(e) =>
+                                  setCustomerPhone(e.target.value)
+                                }
+                                placeholder="Tu teléfono"
+                                className="mt-1"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <div className="sm:col-span-3">
+                              <Label
+                                htmlFor="address"
+                                className="text-xs text-slate-600"
+                              >
+                                Dirección de entrega
+                              </Label>
+                              <Textarea
+                                id="address"
+                                value={deliveryAddress}
+                                onChange={(e) => {
+                                  setDeliveryAddress(e.target.value);
+                                  if (currentCoords) setCurrentCoords(null);
+                                }}
+                                placeholder="Ej: Av. Misiones"
+                                rows={2}
+                                className="mt-1"
+                              />
+                            </div>
+
+                            <div>
+                              <Label
+                                htmlFor="number"
+                                className="text-xs text-slate-600"
+                              >
+                                Número
+                              </Label>
+                              <Input
+                                id="number"
+                                value={deliveryNumber}
+                                onChange={(e) =>
+                                  setDeliveryNumber(e.target.value)
+                                }
+                                placeholder="Ej: 234"
+                                className="mt-1"
+                              />
+                            </div>
                           </div>
 
                           <div>
                             <Label
-                              htmlFor="phone"
+                              htmlFor="city"
                               className="text-xs text-slate-600"
                             >
-                              Teléfono
+                              Ciudad
                             </Label>
                             <Input
-                              id="phone"
-                              value={customerPhone}
-                              onChange={(e) => setCustomerPhone(e.target.value)}
-                              placeholder="Tu teléfono"
+                              id="city"
+                              value={deliveryCity}
+                              onChange={(e) => setDeliveryCity(e.target.value)}
+                              placeholder="Ej: Puerto Iguazú"
                               className="mt-1"
                             />
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              Podés escribir la ciudad. Si usás tu ubicación
+                              actual, se completa automáticamente.
+                            </p>
                           </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                          <div className="sm:col-span-3">
+                          {/* Mapa + ubicación actual */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs text-slate-600">
+                                Mapa de la ubicación
+                              </Label>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                onClick={handleUseCurrentLocation}
+                                disabled={geoLoading}
+                              >
+                                {geoLoading ? (
+                                  "Obteniendo..."
+                                ) : (
+                                  <>
+                                    <Crosshair className="w-3 h-3 mr-1" />
+                                    Usar mi ubicación actual
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+
+                            <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 h-40">
+                              {mapEmbedUrl ? (
+                                <iframe
+                                  title="Mapa de entrega"
+                                  src={mapEmbedUrl}
+                                  className="w-full h-full border-0"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer-when-downgrade"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 px-4 text-center">
+                                  Escribí una dirección y ciudad o usá tu
+                                  ubicación actual para ver el mapa.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
                             <Label
-                              htmlFor="address"
+                              htmlFor="payment"
                               className="text-xs text-slate-600"
                             >
-                              Dirección de entrega
+                              Método de pago
+                            </Label>
+                            <select
+                              id="payment"
+                              className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
+                              value={paymentMethod}
+                              onChange={(e) => setPaymentMethod(e.target.value)}
+                            >
+                              <option value="cash">Efectivo</option>
+                              {canUseMpPayments && (
+                                <option value="mp">Mercado Pago</option>
+                              )}
+                            </select>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              {canUseMpPayments
+                                ? "Podés pagar en efectivo o con Mercado Pago."
+                                : "Este restaurante solo acepta pagos en efectivo."}
+                            </p>
+                          </div>
+
+                          <div>
+                            <Label
+                              htmlFor="notes"
+                              className="text-xs text-slate-600"
+                            >
+                              Notas adicionales (opcional)
                             </Label>
                             <Textarea
-                              id="address"
-                              value={deliveryAddress}
-                              onChange={(e) => {
-                                setDeliveryAddress(e.target.value);
-                                if (currentCoords) setCurrentCoords(null);
-                              }}
-                              placeholder="Ej: Av. Misiones"
+                              id="notes"
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                              placeholder="Ej: sin cebolla, extra salsa..."
                               rows={2}
                               className="mt-1"
                             />
                           </div>
+                        </CardContent>
+                      </Card>
 
-                          <div>
-                            <Label
-                              htmlFor="number"
-                              className="text-xs text-slate-600"
-                            >
-                              Número
-                            </Label>
-                            <Input
-                              id="number"
-                              value={deliveryNumber}
-                              onChange={(e) =>
-                                setDeliveryNumber(e.target.value)
-                              }
-                              placeholder="Ej: 234"
-                              className="mt-1"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Ciudad como input libre */}
-                        <div>
-                          <Label
-                            htmlFor="city"
-                            className="text-xs text-slate-600"
-                          >
-                            Ciudad
-                          </Label>
-                          <Input
-                            id="city"
-                            value={deliveryCity}
-                            onChange={(e) => setDeliveryCity(e.target.value)}
-                            placeholder="Ej: Puerto Iguazú"
-                            className="mt-1"
-                          />
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            Podés escribir la ciudad. Si usás tu ubicación
-                            actual, se completa automáticamente.
-                          </p>
-                        </div>
-
-                        {/* Bloque de mapa + ubicación actual */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-slate-600">
-                              Mapa de la ubicación
-                            </Label>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="xs"
-                              onClick={handleUseCurrentLocation}
-                              disabled={geoLoading}
-                            >
-                              {geoLoading ? (
-                                "Obteniendo..."
-                              ) : (
-                                <>
-                                  <Crosshair className="w-3 h-3 mr-1" />
-                                  Usar mi ubicación actual
-                                </>
-                              )}
-                            </Button>
+                      {/* Resumen total más limpio */}
+                      <Card className="border-slate-200 rounded-2xl">
+                        <CardContent className="p-4 space-y-3 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Subtotal</span>
+                            <span className="font-medium">
+                              ${getCartTotal().toLocaleString()}
+                            </span>
                           </div>
 
-                          <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 h-48">
-                            {mapEmbedUrl ? (
-                              <iframe
-                                title="Mapa de entrega"
-                                src={mapEmbedUrl}
-                                className="w-full h-full border-0"
-                                loading="lazy"
-                                referrerPolicy="no-referrer-when-downgrade"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 px-4 text-center">
-                                Escribí una dirección y ciudad o usá tu
-                                ubicación actual para ver el mapa.
-                              </div>
-                            )}
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Envío</span>
+                            <span className="font-medium">
+                              $
+                              {Number(
+                                restaurant?.delivery_fee || 0
+                              ).toLocaleString()}
+                            </span>
                           </div>
 
-                          <p className="text-[11px] text-slate-400">
-                            El mapa se genera automáticamente según la dirección
-                            + ciudad o tu ubicación actual. El link se enviará
-                            al restaurante junto con tu pedido.
-                          </p>
-                        </div>
+                          {paymentMethod === "mp" && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">
+                                Comisión Mercado Pago (6,29%)
+                              </span>
+                              <span className="font-medium">
+                                ${getMpCommission().toFixed(2)}
+                              </span>
+                            </div>
+                          )}
 
-                        <div>
-                          <Label
-                            htmlFor="payment"
-                            className="text-xs text-slate-600"
-                          >
-                            Método de pago
-                          </Label>
-                          <select
-                            id="payment"
-                            className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                          >
-                            {/* Siempre disponible */}
-                            <option value="cash">Efectivo</option>
+                          <div className="border-t pt-3 mt-1 flex justify-between items-center font-bold text-base">
+                            <span>Total a pagar</span>
+                            <span className="text-red-600 text-lg">
+                              ${getFinalTotal().toLocaleString()}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
 
-                            {/* Solo si el restaurante tiene MP conectado Y tiene habilitados pagos con MP */}
-                            {canUseMpPayments && (
-                              <option value="mp">Mercado Pago</option>
-                            )}
-                          </select>
-
-                          <p className="text-[11px] text-slate-400 mt-1">
-                            {canUseMpPayments
-                              ? "Podés pagar en efectivo o con Mercado Pago."
-                              : "Este restaurante solo acepta pagos en efectivo."}
-                          </p>
-                        </div>
-
-                        <div>
-                          <Label
-                            htmlFor="notes"
-                            className="text-xs text-slate-600"
-                          >
-                            Notas adicionales (opcional)
-                          </Label>
-                          <Textarea
-                            id="notes"
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Ej: sin cebolla, extra salsa..."
-                            rows={2}
-                            className="mt-1"
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Resumen total */}
-                    <Card className="border-slate-200">
-                      <CardContent className="p-4 space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">Subtotal</span>
-                          <Card className="border-slate-200">
-                            <CardContent className="p-4 space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-slate-600">Subtotal</span>
-                                <span className="font-medium">
-                                  ${getCartTotal().toLocaleString()}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between">
-                                <span className="text-slate-600">Envío</span>
-                                <span className="font-medium">
-                                  $
-                                  {Number(
-                                    restaurant?.delivery_fee || 0
-                                  ).toLocaleString()}
-                                </span>
-                              </div>
-
-                              {paymentMethod === "mp" && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-600">
-                                    Comisión Mercado Pago (6,29%)
-                                  </span>
-                                  <span className="font-medium">
-                                    ${getMpCommission().toFixed(2)}
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="border-t pt-2 mt-1 flex justify-between font-bold text-base">
-                                <span>Total</span>
-                                <span className="text-red-600">
-                                  ${getFinalTotal().toLocaleString()}
-                                </span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Button
-                      className="w-full bg-red-600 hover:bg-red-700"
-                      size="lg"
-                      onClick={handleCheckout}
-                      disabled={creatingOrder}
-                    >
-                      {creatingOrder ? "Procesando..." : "Confirmar pedido"}
-                    </Button>
-                  </div>
+                    {/* Botón fijo abajo del Sheet */}
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <Button
+                        className="w-full bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 shadow-md"
+                        size="lg"
+                        onClick={handleCheckout}
+                        disabled={creatingOrder}
+                      >
+                        {creatingOrder ? "Procesando..." : "Confirmar pedido"}
+                      </Button>
+                    </div>
+                  </>
                 )}
               </SheetContent>
             </Sheet>
