@@ -260,13 +260,56 @@ export default function Empleos() {
   const [reportComment, setReportComment] = useState("");
   const [reportLoading, setReportLoading] = useState(false);
 
+  const [hasActiveSub, setHasActiveSub] = useState(false);
+  const [subChecked, setSubChecked] = useState(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
-      if (!u) return setFavIds(new Set());
-      const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
-      setFavIds(new Set(snap.docs.map((d) => d.id)));
+      setFavIds(new Set());
+      setHasActiveSub(false);
+      setSubChecked(false);
+
+      // Si no está logueado, solo marcamos que ya chequeamos y salimos
+      if (!u) {
+        setSubChecked(true);
+        return;
+      }
+
+      try {
+        // 1) Favoritos
+        const favSnap = await getDocs(
+          collection(db, "users", u.uid, "favorites")
+        );
+        setFavIds(new Set(favSnap.docs.map((d) => d.id)));
+
+        // 2) Suscripción
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", u.email),
+          where("product_type", "==", "publications")
+        );
+        const snap = await getDocs(qSub);
+
+        if (snap.empty) {
+          setHasActiveSub(false);
+        } else {
+          const subs = snap.docs.map((d) => d.data());
+          const active = subs.some((s) => {
+            const end = toJsDate(s.end_date);
+            const expired = !end || end.getTime() < Date.now();
+            return s.status === "active" && !expired;
+          });
+          setHasActiveSub(active);
+        }
+      } catch (e) {
+        console.error("[empleos] error cargando suscripción del usuario", e);
+        setHasActiveSub(false);
+      } finally {
+        setSubChecked(true);
+      }
     });
+
     return () => unsub();
   }, []);
 
@@ -633,7 +676,16 @@ export default function Empleos() {
                     <RefreshCw className="w-4 h-4 mr-2" /> Limpiar filtros
                   </Button>
                   {/* Publicar empleo */}
-                  <Link to="/admin?new=1&category=empleo" className="w-full">
+                  <Link
+                    to={
+                      !user
+                        ? "/login"
+                        : hasActiveSub
+                        ? "/admin?new=1&category=empleo"
+                        : "/planes-publicar"
+                    }
+                    className="w-full"
+                  >
                     <Button className="gap-2">
                       <Plus className="w-4 h-4" />
                       Publicar empleo
@@ -878,7 +930,15 @@ export default function Empleos() {
                   <Button variant="secondary" onClick={clearFilters}>
                     Limpiar filtros
                   </Button>
-                  <Link to="/admin?new=1&category=empleo">
+                  <Link
+                    to={
+                      !user
+                        ? "/login"
+                        : hasActiveSub
+                        ? "/admin?new=1&category=empleo"
+                        : "/planes-publicar"
+                    }
+                  >
                     <Button>Publicar empleo</Button>
                   </Link>
                 </div>

@@ -34,12 +34,7 @@ import {
   Flag,
 } from "lucide-react";
 import { Textarea } from "@/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Card, CardContent } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";
@@ -108,9 +103,7 @@ const isExpired = (end) => {
 async function filterByActiveSubscription(list) {
   if (!list.length) return [];
 
-  const emails = [
-    ...new Set(list.map((p) => p.created_by).filter(Boolean)),
-  ];
+  const emails = [...new Set(list.map((p) => p.created_by).filter(Boolean))];
   if (!emails.length) return [];
 
   const resultByEmail = {};
@@ -160,7 +153,6 @@ async function filterByActiveSubscription(list) {
   });
 }
 
-
 // ¿La publicación está vencida por suscripción?
 const isPublicationExpired = (pub) => {
   const d = toJsDate(pub.subscription_end_date);
@@ -176,11 +168,14 @@ export default function Alquileres() {
   const [favIds, setFavIds] = useState(new Set());
   const [favBusy, setFavBusy] = useState({}); // id -> boolean
   const [userRatings, setUserRatings] = useState({}); // { [publicationId]: number }
-    // ===== Reportes =====
+  // Suscripción
+  const [hasActiveSub, setHasActiveSub] = useState(false);
+  const [subChecked, setSubChecked] = useState(false);
+
+  // ===== Reportes =====
   const [reportOpen, setReportOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState(null);
   const [reportComment, setReportComment] = useState("");
-
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -197,6 +192,34 @@ export default function Alquileres() {
           collection(db, "users", u.uid, "favorites")
         );
         setFavIds(new Set(favSnap.docs.map((d) => d.id)));
+
+        // ==== Suscripción del usuario ====
+        try {
+          const qSub = fsQuery(
+            collection(db, "subscriptions"),
+            where("user_email", "==", u.email),
+            where("product_type", "==", "publications")
+          );
+
+          const snap = await getDocs(qSub);
+
+          if (snap.empty) {
+            setHasActiveSub(false);
+          } else {
+            const subs = snap.docs.map((d) => d.data());
+            const active = subs.some((s) => {
+              const end = toJsDate(s.end_date);
+              const expired = !end || end.getTime() < Date.now();
+              return s.status === "active" && !expired;
+            });
+            setHasActiveSub(active);
+          }
+        } catch (e) {
+          console.error("[alquileres] error cargando suscripción", e);
+          setHasActiveSub(false);
+        } finally {
+          setSubChecked(true);
+        }
 
         // cargar ratings previos del usuario para alquileres
         const ratingsSnap = await getDocs(
@@ -319,7 +342,7 @@ export default function Alquileres() {
     }
   };
 
-    const openReport = (property) => {
+  const openReport = (property) => {
     if (!user) {
       toast.error("Iniciá sesión para reportar un alquiler");
       return;
@@ -343,8 +366,7 @@ export default function Alquileres() {
       await addDoc(collection(db, "reports"), {
         publication_id: reportTarget.id,
         publication_title: reportTarget.title || "",
-        owner_email:
-          reportTarget.user_email || reportTarget.created_by || "",
+        owner_email: reportTarget.user_email || reportTarget.created_by || "",
         reporter_uid: user.uid,
         reporter_email: user.email || "",
         comment,
@@ -361,7 +383,6 @@ export default function Alquileres() {
       toast.error("No se pudo enviar el reporte");
     }
   };
-
 
   // ===== Filtros / estado =====
   const [searchTerm, setSearchTerm] = useState("");
@@ -390,7 +411,7 @@ export default function Alquileres() {
   ]);
 
   // ===== Query Firestore =====
-   const {
+  const {
     data: publications = [],
     isLoading,
     error,
@@ -457,7 +478,6 @@ export default function Alquileres() {
     },
   });
 
-
   const formatter = useMemo(
     () =>
       new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }),
@@ -472,7 +492,7 @@ export default function Alquileres() {
   }, [publications]);
 
   // ===== Filtrado + orden + favoritos primero =====
-    const filtered = useMemo(() => {
+  const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     let list = publications.filter((p) => {
@@ -810,7 +830,15 @@ export default function Alquileres() {
               )}
 
               {/* Publicar alquiler */}
-              <Link to="/admin?new=1&category=alquiler">
+              <Link
+                to={
+                  !user
+                    ? "/login"
+                    : hasActiveSub
+                    ? "/admin?new=1&category=alquiler"
+                    : "/planes-publicar"
+                }
+              >
                 <Button className="gap-2">
                   <Plus className="w-4 h-4" />
                   Publicar alquiler
@@ -1051,7 +1079,7 @@ export default function Alquileres() {
                         </div>
                       )}
 
-                                            <div className="pt-4 border-t border-slate-200 space-y-2">
+                      <div className="pt-4 border-t border-slate-200 space-y-2">
                         <Button
                           asChild
                           className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-sm"
@@ -1070,7 +1098,6 @@ export default function Alquileres() {
                           Reportar publicación
                         </button>
                       </div>
-
                     </CardContent>
                   </Card>
                 );
@@ -1087,7 +1114,15 @@ export default function Alquileres() {
                     búsqueda.
                   </p>
                   <div className="mt-6">
-                    <Link to="/admin?new=1&category=alquiler">
+                    <Link
+                      to={
+                        !user
+                          ? "/login"
+                          : hasActiveSub
+                          ? "/admin?new=1&category=alquiler"
+                          : "/planes-publicar"
+                      }
+                    >
                       <Button className="gap-2">
                         <Plus className="w-4 h-4" />
                         Publicar alquiler

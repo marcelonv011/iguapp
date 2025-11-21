@@ -9,6 +9,7 @@ import {
   Tag,
   Heart,
   Flag,
+  Plus,
 } from "lucide-react";
 import { Textarea } from "@/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
@@ -252,6 +253,9 @@ export default function Ventas() {
   const [reportTarget, setReportTarget] = useState(null);
   const [reportComment, setReportComment] = useState("");
 
+  const [hasActiveSub, setHasActiveSub] = useState(false);
+  const [subChecked, setSubChecked] = useState(false);
+
   const {
     data: publications = [],
     isLoading,
@@ -266,17 +270,52 @@ export default function Ventas() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
+      setFavIds(new Set());
+      setHasActiveSub(false);
+      setSubChecked(false);
+
       if (!u) {
-        setFavIds(new Set());
+        setSubChecked(true);
         return;
       }
+
       try {
+        // Favoritos
         const snap = await getDocs(collection(db, "users", u.uid, "favorites"));
         setFavIds(new Set(snap.docs.map((d) => d.id)));
       } catch (e) {
         console.error("[ventas] error leyendo favoritos:", e);
       }
+
+      // Suscripción
+      try {
+        const qSub = fsQuery(
+          collection(db, "subscriptions"),
+          where("user_email", "==", u.email),
+          where("product_type", "==", "publications")
+        );
+
+        const snapSub = await getDocs(qSub);
+
+        if (snapSub.empty) {
+          setHasActiveSub(false);
+        } else {
+          const subs = snapSub.docs.map((d) => d.data());
+          const active = subs.some((s) => {
+            const end = toJsDate(s.end_date);
+            const expired = !end || end.getTime() < Date.now();
+            return s.status === "active" && !expired;
+          });
+          setHasActiveSub(active);
+        }
+      } catch (e) {
+        console.error("[ventas] error cargando suscripción", e);
+        setHasActiveSub(false);
+      } finally {
+        setSubChecked(true);
+      }
     });
+
     return () => unsub();
   }, []);
 
@@ -541,6 +580,22 @@ export default function Ventas() {
                     Limpiar todo
                   </Button>
                 )}
+
+                {/* 👉 Publicar producto con lógica de suscripción */}
+                <Link
+                  to={
+                    !user
+                      ? "/login"
+                      : hasActiveSub
+                      ? "/admin?new=1&category=venta"
+                      : "/planes-publicar"
+                  }
+                >
+                  <Button className="gap-2" size="sm">
+                    <Plus className="w-4 h-4" />
+                    Publicar producto
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -696,10 +751,25 @@ export default function Ventas() {
                 <p className="text-slate-600 text-lg">
                   No se encontraron productos
                 </p>
-                <p className="text-slate-400 text-sm">
+                <p className="text-slate-400 text-sm mb-4">
                   Probá buscar por otra palabra o cambiar la ubicación /
                   categoría.
                 </p>
+
+                <Link
+                  to={
+                    !user
+                      ? "/login"
+                      : hasActiveSub
+                      ? "/admin?new=1&category=venta"
+                      : "/planes-publicar"
+                  }
+                >
+                  <Button className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    Publicar producto
+                  </Button>
+                </Link>
               </div>
             )}
           </div>
