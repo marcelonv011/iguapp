@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
+import { toast } from "sonner";
 
 import { User, Phone, Mail, Lock, ArrowRight } from "lucide-react";
 
@@ -28,19 +29,43 @@ export default function Registro() {
     formState: { errors, isSubmitting },
     watch,
   } = useForm({
-    defaultValues: { full_name: "", phone_number: "", email: "", password: "" },
+    defaultValues: {
+      full_name: "",
+      phone_number: "",
+      email: "",
+      password: "",
+      acceptLegal: false,
+      adultOrConsent: false,
+    },
   });
 
   const password = watch("password");
+  const acceptLegal = watch("acceptLegal");
+  const adultOrConsent = watch("adultOrConsent");
 
   useEffect(() => {
     if (auth.currentUser) navigate(from, { replace: true });
   }, [navigate, from]);
 
-  const onSubmit = async ({ full_name, phone_number, email, password }) => {
+  const onSubmit = async (data) => {
+    const {
+      full_name,
+      phone_number,
+      email,
+      password,
+      acceptLegal,
+      adultOrConsent,
+    } = data;
+
+    if (!acceptLegal || !adultOrConsent) {
+      toast.error(
+        "Debés aceptar los términos y declarar mayoría de edad o consentimiento."
+      );
+      return;
+    }
+
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // si tu ensureUserDoc admite overrides, los pasamos:
       await ensureUserDoc(cred.user, { full_name, phone_number });
       navigate(from, { replace: true });
     } catch (e) {
@@ -49,18 +74,32 @@ export default function Registro() {
   };
 
   const registerWithGoogle = async () => {
-    try {
-      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-      await ensureUserDoc(cred.user);
-      navigate(from, { replace: true });
-    } catch (e) {
-      alert(e?.message || "Error con Google");
-    }
-  };
+  // ⚠️ Misma validación que para el formulario normal
+  if (!acceptLegal || !adultOrConsent) {
+    toast.error(
+  "Debés aceptar los Términos y la confirmación de edad antes de continuar con Google."
+);
+    return;
+  }
+
+  try {
+    const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+    await ensureUserDoc(cred.user);
+    navigate(from, { replace: true });
+  } catch (e) {
+    alert(e?.message || "Error con Google");
+  }
+};
+
 
   // helper mínimo de fuerza (solo visual)
-  const strength =
-    !password ? 0 : password.length >= 12 ? 3 : password.length >= 8 ? 2 : 1;
+  const strength = !password
+    ? 0
+    : password.length >= 12
+    ? 3
+    : password.length >= 8
+    ? 2
+    : 1;
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -80,7 +119,9 @@ export default function Registro() {
                 <h2 className="text-xl font-extrabold tracking-tight text-slate-900">
                   Ciudad Digital
                 </h2>
-                <p className="text-xs text-slate-500">Tu ciudad en un solo lugar</p>
+                <p className="text-xs text-slate-500">
+                  Tu ciudad en un solo lugar
+                </p>
               </div>
             </div>
 
@@ -105,11 +146,13 @@ export default function Registro() {
                   />
                 </div>
                 {errors.full_name && (
-                  <p className="text-xs text-red-600">{errors.full_name.message}</p>
+                  <p className="text-xs text-red-600">
+                    {errors.full_name.message}
+                  </p>
                 )}
               </div>
 
-              {/* Teléfono (opcional) */}
+              {/* Teléfono */}
               <div className="space-y-2">
                 <Label htmlFor="phone_number">Teléfono</Label>
                 <div className="relative">
@@ -169,7 +212,7 @@ export default function Registro() {
                   />
                 </div>
 
-                {/* Indicador simple de fuerza */}
+                {/* Fuerza */}
                 <div className="h-1 rounded bg-slate-200 overflow-hidden">
                   <div
                     className={`h-full transition-all ${
@@ -183,16 +226,60 @@ export default function Registro() {
                     }`}
                   />
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Usá 8+ caracteres. Mejor si combinás mayúsculas, números y símbolos.
-                </p>
+              </div>
 
-                {errors.password && (
-                  <p className="text-xs text-red-600">{errors.password.message}</p>
+              {/* ⚠️ CHECKBOX LEGALES */}
+              <div className="space-y-3 mt-5">
+                {/* Términos y Privacidad */}
+                <label className="flex items-start gap-2 text-xs md:text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    {...register("acceptLegal", {
+                      required: true,
+                    })}
+                  />
+                  <span>
+                    Acepto los{" "}
+                    <Link to="/terminos" className="text-blue-600 underline">
+                      Términos y Condiciones
+                    </Link>{" "}
+                    y la{" "}
+                    <Link to="/privacidad" className="text-blue-600 underline">
+                      Política de Privacidad
+                    </Link>
+                    .
+                  </span>
+                </label>
+
+                {/* Consentimiento menor */}
+                <label className="flex items-start gap-2 text-xs md:text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    {...register("adultOrConsent", {
+                      required: true,
+                    })}
+                  />
+                  <span>
+                    Declaro ser mayor de 18 años o contar con la autorización de
+                    mi madre, padre o tutor legal para usar ConectCity.
+                  </span>
+                </label>
+
+                {(errors.acceptLegal || errors.adultOrConsent) && (
+                  <p className="text-xs text-red-600">
+                    Debés aceptar los términos y confirmar mayoría de edad o
+                    consentimiento.
+                  </p>
                 )}
               </div>
 
-              <Button disabled={isSubmitting} className="w-full rounded-xl">
+              {/* Botón */}
+              <Button
+                disabled={isSubmitting}
+                className="w-full rounded-xl mt-4"
+              >
                 {isSubmitting ? "Creando cuenta..." : "Registrarme"}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>

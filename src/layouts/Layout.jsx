@@ -507,9 +507,34 @@ export default function Layout({ children }) {
             </div>
           </div>
 
-          {/* Copy final */}
-          <div className="border-t border-slate-800 mt-8 pt-6 text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} ConectCity — Tu ciudad, conectada.
+          {/* Copy final + links legales */}
+          <div className="border-t border-slate-800 mt-8 pt-6 text-slate-500 text-sm">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+              <span className="text-center md:text-left">
+                © {new Date().getFullYear()} ConectCity — Tu ciudad, conectada.
+              </span>
+
+              <div className="flex flex-wrap gap-3 justify-center md:justify-end">
+                <Link
+                  to="/terminos"
+                  className="text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Términos y Condiciones
+                </Link>
+                <Link
+                  to="/privacidad"
+                  className="text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Política de Privacidad
+                </Link>
+                <Link
+                  to="/aviso-legal"
+                  className="text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Aviso Legal
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
