@@ -55,7 +55,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
-// ===== Cloudinary helper (tu archivo) =====
+// ===== Cloudinary helper =====
 import { uploadToCloudinary } from "@/lib/uploadImage";
 
 export default function GestionarRestaurante() {
@@ -89,13 +89,18 @@ export default function GestionarRestaurante() {
   const [subscriptionExpired, setSubscriptionExpired] = useState(false);
   const [subLoading, setSubLoading] = useState(true);
 
-  // fecha para filtrar pedidos (por defecto: hoy)
+  // fecha por defecto = HOY
   const [ordersDateFilter, setOrdersDateFilter] = useState(() => {
     const d = new Date();
-    return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    return d.toISOString().slice(0, 10);
   });
 
-  // ---- Helpers de fecha/suscripción ----
+  // ==== Onboarding Mercado Pago ====
+  const [mpFastMode, setMpFastMode] = useState(false);
+  const [mpLoading, setMpLoading] = useState(true);
+  const [mpOnboardingOpen, setMpOnboardingOpen] = useState(false);
+
+  // ---- Helpers fecha/suscripción ----
   const toJsDate = (v) => {
     if (!v) return null;
     if (v?.toDate) return v.toDate();
@@ -109,13 +114,13 @@ export default function GestionarRestaurante() {
     return d ? d.getTime() < Date.now() : true;
   };
 
-  // Restaurant form
+  // Form restaurante
   const [restaurantForm, setRestaurantForm] = useState({
     name: "",
     description: "",
     category: "comida_rapida",
-    address: "", // calle
-    address_number: "", // número
+    address: "",
+    address_number: "",
     city: "Puerto Iguazú",
     phone: "",
     delivery_time: "30-45 min",
@@ -126,7 +131,7 @@ export default function GestionarRestaurante() {
     cover_image: "",
   });
 
-  // Menu item form
+  // Form item menú
   const [menuItemForm, setMenuItemForm] = useState({
     name: "",
     description: "",
@@ -137,7 +142,7 @@ export default function GestionarRestaurante() {
   });
 
   // ==========================
-  //  Auth (Firebase)
+  //  Auth
   // ==========================
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
@@ -148,13 +153,11 @@ export default function GestionarRestaurante() {
       }
       setAuthLoading(false);
     });
-
     return () => unsub();
   }, [navigate]);
 
   // ==========================
-  //  Cargar restaurante del usuario
-  //  Doc: "restaurants/{user.uid}"
+  //  Cargar restaurante
   // ==========================
   useEffect(() => {
     if (!user) return;
@@ -170,7 +173,7 @@ export default function GestionarRestaurante() {
           setMyRestaurant(null);
         }
       } catch (error) {
-        console.error("Error cargando restaurante:", error);
+        console.error(error);
         toast.error("Error cargando tu restaurante");
       } finally {
         setRestaurantLoading(false);
@@ -180,7 +183,9 @@ export default function GestionarRestaurante() {
     loadRestaurant();
   }, [user]);
 
-  // ===== Cargar suscripción del usuario (solo RESTAURANTE) =====
+  // ==========================
+  //  Suscripción restaurante
+  // ==========================
   useEffect(() => {
     if (!user) return;
 
@@ -201,39 +206,24 @@ export default function GestionarRestaurante() {
           return;
         }
 
-        // Traemos todas las suscripciones del usuario
         const allSubs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // 👇 Nos quedamos SOLO con las de restaurante
-        // Ejemplos esperados:
-        //   plan_type: "restaurant_monthly" o "restaurant_yearly"
         const restaurantSubs = allSubs.filter(
           (s) => s.plan_type && s.plan_type.startsWith("restaurant")
         );
 
         if (restaurantSubs.length === 0) {
-          // Tiene planes de publicaciones, pero NO de restaurante
           setSubscription(null);
           setSubscriptionExpired(true);
           return;
         }
 
-        // De las de restaurante, elegimos la que tenga mayor end_date
         const best = restaurantSubs.reduce((best, cur) => {
           if (!cur.end_date) return best;
           if (!best || !best.end_date) return cur;
 
-          const ms = cur.end_date?.toDate?.()
-            ? cur.end_date.toDate().getTime()
-            : cur.end_date?.seconds
-            ? cur.end_date.seconds * 1000
-            : new Date(cur.end_date).getTime();
-
-          const bestMs = best.end_date?.toDate?.()
-            ? best.end_date.toDate().getTime()
-            : best.end_date?.seconds
-            ? best.end_date.seconds * 1000
-            : new Date(best.end_date).getTime();
+          const ms = toJsDate(cur.end_date)?.getTime();
+          const bestMs = toJsDate(best.end_date)?.getTime();
 
           return ms > bestMs ? cur : best;
         }, null);
@@ -249,7 +239,7 @@ export default function GestionarRestaurante() {
         setSubscription(best);
         setSubscriptionExpired(expired);
       } catch (e) {
-        console.error("Error cargando suscripción restaurante:", e);
+        console.error(e);
         setSubscription(null);
         setSubscriptionExpired(true);
       } finally {
@@ -261,7 +251,30 @@ export default function GestionarRestaurante() {
   }, [user]);
 
   // ==========================
-  //  Cargar items del menú
+  //  Estado de Mercado Pago
+  // ==========================
+  useEffect(() => {
+    if (!user) return;
+
+    const loadMpStatus = async () => {
+      setMpLoading(true);
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          setMpFastMode(!!snap.data().mp_fast_mode_enabled);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setMpLoading(false);
+      }
+    };
+
+    loadMpStatus();
+  }, [user]);
+
+  // ==========================
+  //  Cargar menú
   // ==========================
   useEffect(() => {
     if (!myRestaurant) {
@@ -281,17 +294,14 @@ export default function GestionarRestaurante() {
         const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setMenuItems(data);
       },
-      (error) => {
-        console.error("Error cargando menú:", error);
-        toast.error("Error cargando items del menú");
-      }
+      () => toast.error("Error cargando items del menú")
     );
 
     return () => unsub();
   }, [myRestaurant]);
 
   // ==========================
-  //  Cargar pedidos
+  //  Cargar pedidos (sección Pedidos)
   // ==========================
   useEffect(() => {
     if (!myRestaurant) {
@@ -315,8 +325,7 @@ export default function GestionarRestaurante() {
         setOrders(data);
         setOrdersLoading(false);
       },
-      (error) => {
-        console.error("Error cargando pedidos:", error);
+      () => {
         toast.error("Error cargando pedidos");
         setOrdersLoading(false);
       }
@@ -326,7 +335,7 @@ export default function GestionarRestaurante() {
   }, [myRestaurant]);
 
   // ==========================
-  //  Upload de imágenes (Cloudinary)
+  //  Upload imágenes (Cloudinary)
   // ==========================
   const handleImageUpload = async (e, field) => {
     const file = e.target.files[0];
@@ -338,21 +347,13 @@ export default function GestionarRestaurante() {
 
       if (field.startsWith("restaurant_")) {
         const key = field.replace("restaurant_", "");
-        setRestaurantForm((prev) => ({
-          ...prev,
-          [key]: imageUrl,
-        }));
+        setRestaurantForm((prev) => ({ ...prev, [key]: imageUrl }));
       } else {
-        // imagen del item del menú
-        setMenuItemForm((prev) => ({
-          ...prev,
-          image_url: imageUrl,
-        }));
+        setMenuItemForm((prev) => ({ ...prev, image_url: imageUrl }));
       }
 
       toast.success("Imagen subida");
     } catch (error) {
-      console.error("Error subiendo imagen:", error);
       toast.error("Error subiendo imagen");
     } finally {
       setUploading(false);
@@ -360,16 +361,16 @@ export default function GestionarRestaurante() {
   };
 
   // ==========================
-  //  Crear / actualizar restaurante
+  //  Crear/actualizar restaurante
   // ==========================
   const handleCreateOrUpdateRestaurant = async () => {
     if (!user) return;
 
     if (
       !restaurantForm.name ||
-      !restaurantForm.address || // calle
-      !restaurantForm.address_number || // número
-      !restaurantForm.city || // ciudad
+      !restaurantForm.address ||
+      !restaurantForm.address_number ||
+      !restaurantForm.city ||
       !restaurantForm.phone
     ) {
       toast.error(
@@ -385,27 +386,21 @@ export default function GestionarRestaurante() {
       min_order: parseFloat(restaurantForm.min_order) || 0,
       delivery_fee: parseFloat(restaurantForm.delivery_fee) || 0,
       owner_uid: user.uid,
-      owner_email: user.email || "",
+      owner_email: user.email,
       rating: myRestaurant?.rating || 5,
-      // 👇 si es nuevo => pending, si ya existe respeta el status actual
       status: myRestaurant?.status || "pending",
       updatedAt: serverTimestamp(),
       ...(myRestaurant ? {} : { createdAt: serverTimestamp() }),
     };
 
     try {
-      const ref = doc(db, "restaurants", user.uid);
-      await setDoc(ref, data, { merge: true });
-
+      await setDoc(doc(db, "restaurants", user.uid), data, { merge: true });
       setMyRestaurant({ id: user.uid, ...data });
       toast.success(
-        myRestaurant
-          ? "Restaurante actualizado"
-          : "Restaurante creado exitosamente"
+        myRestaurant ? "Restaurante actualizado" : "Restaurante creado"
       );
       setRestaurantDialogOpen(false);
     } catch (error) {
-      console.error("Error guardando restaurante:", error);
       toast.error("Error guardando restaurante");
     } finally {
       setSavingRestaurant(false);
@@ -413,10 +408,17 @@ export default function GestionarRestaurante() {
   };
 
   const handleOpenRestaurantDialog = () => {
+    // Onboarding Mercado Pago
+    if (!mpFastMode && !mpLoading) {
+      setMpOnboardingOpen(true);
+      return;
+    }
+
     if (subscriptionExpired) {
       toast.error("Tu suscripción está inactiva");
       return;
     }
+
     if (myRestaurant) {
       setRestaurantForm({
         name: myRestaurant.name || "",
@@ -450,11 +452,12 @@ export default function GestionarRestaurante() {
         cover_image: "",
       });
     }
+
     setRestaurantDialogOpen(true);
   };
 
   // ==========================
-  //  Menú: crear / editar / borrar items
+  //  MENÚ — crear / editar / borrar
   // ==========================
   const resetMenuItemForm = () => {
     setMenuItemForm({
@@ -484,7 +487,6 @@ export default function GestionarRestaurante() {
     });
     setMenuItemDialogOpen(true);
   };
-
   const handleSaveMenuItem = async () => {
     if (!myRestaurant) {
       toast.error("Primero configurá tu restaurante");
@@ -556,6 +558,23 @@ export default function GestionarRestaurante() {
     } finally {
       setUpdatingOrderStatusId(null);
     }
+  };
+
+  // ==========================
+  //  Conexión con Mercado Pago (OAuth)
+  // ==========================
+  const handleConnectMercadoPago = () => {
+    if (!myRestaurant) {
+      toast.error("Primero creá y guardá tu restaurante");
+      return;
+    }
+
+    // Endpoint de tu backend que inicia el OAuth con Mercado Pago
+    const apiBase = import.meta.env.VITE_API_BASE_URL;
+    const url = `${apiBase}/mercadopago/connect?restaurant_id=${myRestaurant.id}`;
+
+    // Redirigimos al usuario a tu backend → MP → callback → vuelve al front
+    window.location.href = url;
   };
 
   const getOrderStatusConfig = (status) => {
@@ -687,7 +706,6 @@ export default function GestionarRestaurante() {
                     Renová tu suscripción para habilitar todas las funciones.
                   </p>
 
-                  {/* 👇 ACÁ VA EL BOTÓN */}
                   <Button
                     className="mt-3 bg-red-600 hover:bg-red-700"
                     onClick={() => navigate("/suscripcion")}
@@ -751,16 +769,45 @@ export default function GestionarRestaurante() {
                   Panel para gestionar tu menú, tus pedidos y la información de
                   tu negocio.
                 </p>
+                {!mpFastMode && !mpLoading && (
+                  <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 inline-flex px-2 py-1 rounded-full border border-amber-200">
+                    Antes de crear el restaurante, activá la acreditación
+                    inmediata en Mercado Pago (te guiamos paso a paso).
+                  </p>
+                )}
               </div>
             </div>
-            <Button
-              onClick={handleOpenRestaurantDialog}
-              className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30"
-              disabled={subscriptionExpired}
-            >
-              <Edit className="w-4 h-4 mr-2" />
-              {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              <Button
+                onClick={handleOpenRestaurantDialog}
+                className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30 w-full sm:w-auto"
+                disabled={subscriptionExpired}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
+              </Button>
+
+              {/* Botón para conectar con Mercado Pago */}
+              <Button
+                variant="outline"
+                className="border-blue-600 text-blue-700 hover:bg-blue-50 w-full sm:w-auto text-xs sm:text-sm"
+                onClick={handleConnectMercadoPago}
+                disabled={!myRestaurant || subscriptionExpired}
+              >
+                <img
+                  src="https://http2.mlstatic.com/frontend-assets/mp-web-navigation/ui-navigation/5.18.9/mercadopago/logo__large.png"
+                  alt="Mercado Pago"
+                  className="h-4 mr-2"
+                />
+                Conectar con Mercado Pago
+              </Button>
+
+              {subscriptionExpired && (
+                <p className="text-[11px] text-red-600 text-right">
+                  Necesitás una suscripción activa para conectar Mercado Pago.
+                </p>
+              )}
+            </div>
           </div>
 
           {!restaurantLoading && !myRestaurant && (
@@ -903,7 +950,7 @@ export default function GestionarRestaurante() {
                       setMenuItemDialogOpen(true);
                     }}
                     className="bg-red-600 hover:bg-red-700 shadow-sm"
-                    disabled={subscriptionExpired} // 👈 ACÁ VA EL disabled
+                    disabled={subscriptionExpired}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Agregar Item
@@ -1476,6 +1523,7 @@ export default function GestionarRestaurante() {
                   <Button
                     onClick={handleOpenRestaurantDialog}
                     className="mt-2 bg-red-600 hover:bg-red-700 shadow-sm"
+                    disabled={subscriptionExpired}
                   >
                     <Edit className="w-4 h-4 mr-2" />
                     Editar Información
@@ -1788,6 +1836,7 @@ export default function GestionarRestaurante() {
           </div>
         </DialogContent>
       </Dialog>
+
       {/* Dialog motivo de cancelación */}
       <Dialog
         open={cancelDialogOpen}
@@ -1997,6 +2046,94 @@ export default function GestionarRestaurante() {
                 className="bg-red-600 hover:bg-red-700"
               >
                 {editingMenuItem ? "Actualizar" : "Agregar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Onboarding Mercado Pago */}
+      <Dialog
+        open={mpOnboardingOpen}
+        onOpenChange={(open) => {
+          setMpOnboardingOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Activar acreditación inmediata en Mercado Pago
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm text-slate-700">
+            <p>
+              Para poder recibir los pagos de tus pedidos en el momento,
+              necesitás activar la opción{" "}
+              <strong>“Acreditación inmediata”</strong> en tu cuenta de Mercado
+              Pago.
+            </p>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h3 className="font-semibold text-blue-700 mb-1">
+                Cómo activar “Dinero disponible al instante”
+              </h3>
+
+              <p className="text-sm text-blue-800 mb-2">
+                Seguí estos pasos dentro de la app de Mercado Pago:
+              </p>
+
+              <ol className="list-decimal list-inside space-y-1 text-blue-800 text-sm">
+                <li>Abrí la app de Mercado Pago en tu celular.</li>
+                <li>
+                  Entrá a <strong>Configuraciones</strong>.
+                </li>
+                <li>
+                  Dentro de Configuraciones, elegí <strong>Negocio</strong>.
+                </li>
+                <li>
+                  Buscá y seleccioná <strong>Costos y cuotas</strong>.
+                </li>
+                <li>
+                  Dentro de Costos y cuotas, tocá <strong>Checkout</strong>.
+                </li>
+                <li>
+                  En Checkout, entrá a{" "}
+                  <strong>Configurar costos por cobros</strong>.
+                </li>
+                <li>
+                  Por último, seleccioná{" "}
+                  <strong>Dinero disponible al instante</strong>.
+                </li>
+              </ol>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              * Mercado Pago aplica su propia comisión. Tu restaurante no pierde
+              dinero: la app ajusta automáticamente el precio para que recibas
+              el monto exacto que esperás cobrar.
+            </p>
+
+            <div className="pt-2 flex justify-end">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={async () => {
+                  try {
+                    await setDoc(
+                      doc(db, "users", user.uid),
+                      { mp_fast_mode_enabled: true },
+                      { merge: true }
+                    );
+                    setMpFastMode(true);
+                    toast.success("Onboarding completado");
+                    setMpOnboardingOpen(false);
+                  } catch (e) {
+                    console.error(e);
+                    toast.error("Error guardando el estado en tu cuenta");
+                  }
+                }}
+              >
+                Ya activé la acreditación inmediata
               </Button>
             </div>
           </div>

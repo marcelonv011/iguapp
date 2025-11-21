@@ -4,6 +4,9 @@ const cors = require("cors");
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 const admin = require("firebase-admin");
 
+// 🔹 Importar rutas OAuth (nueva funcionalidad)
+const mpOAuthRoutes = require("./mercadopago");
+
 const app = express();
 
 app.use(
@@ -14,8 +17,6 @@ app.use(
 app.use(express.json());
 
 // ========= FIREBASE ADMIN =========
-// En tu .env guardás el JSON del service account:
-// FIREBASE_SERVICE_ACCOUNT={...}
 if (!admin.apps.length) {
   const serviceAccount = require("./serviceAccount.json");
 
@@ -25,12 +26,19 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// ========= MERCADO PAGO CONFIG =========
+// ========= MERCADO PAGO (para tus planes actuales) =========
 const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
+  accessToken: process.env.MP_ACCESS_TOKEN, // ⚠️ el que ya usabas antes
 });
 
-// Config de TODOS los planes que tenés
+// ========= MONTAR RUTAS OAUTH DE MERCADO PAGO =========
+// /mercadopago/connect
+// /mercadopago/callback
+app.use("/mercadopago", mpOAuthRoutes);
+
+// ================================
+// CONFIGURACIÓN DE PLANES / SUSCRIPCIONES
+// ================================
 const PLAN_CONFIG = {
   publications_basic: {
     product_type: "publications",
@@ -57,7 +65,7 @@ const PLAN_CONFIG = {
   },
 };
 
-// 👇 FUNCIÓN CLAVE: hacer admin + crear suscripción
+// ========= ACTIVAR PLAN USUARIO =========
 async function activarPlanUsuario(userId, planType, paymentId) {
   console.log("🔥 activarPlanUsuario()", { userId, planType, paymentId });
 
@@ -67,33 +75,30 @@ async function activarPlanUsuario(userId, planType, paymentId) {
     return;
   }
 
-  // 1) Buscar user por ID en colección "users"
   const userRef = db.collection("users").doc(userId);
   const userSnap = await userRef.get();
   if (!userSnap.exists) {
-    console.warn("Usuario no encontrado en Firestore:", userId);
+    console.warn("Usuario no encontrado:", userId);
     return;
   }
 
   const userData = userSnap.data();
   const email = userData.email;
 
-  // 2) Si NO es superadmin, lo convertimos en admin
   if (userData.role_type !== "superadmin") {
     await userRef.update({ role_type: "admin" });
-    console.log("✅ Rol actualizado a admin para", email);
+    console.log("✅ Rol actualizado a admin:", email);
   }
 
-  // 3) Crear doc de suscripción en "subscriptions"
   const now = new Date();
   const end = new Date(now);
   end.setMonth(end.getMonth() + (cfg.months || 1));
 
   const subDataBase = {
     user_email: email,
-    plan_type: planType, // publications_basic | ... | restaurant_mensual
-    product_type: cfg.product_type, // "publications" | "restaurant"
-    plan_tier: cfg.plan_tier, // basic | intermediate | pro | restaurant_mensual
+    plan_type: planType,
+    product_type: cfg.product_type,
+    plan_tier: cfg.plan_tier,
     start_date: admin.firestore.Timestamp.fromDate(now),
     end_date: admin.firestore.Timestamp.fromDate(end),
     status: "active",
@@ -110,12 +115,10 @@ async function activarPlanUsuario(userId, planType, paymentId) {
   console.log("✅ Suscripción creada:", subDataBase);
 }
 
-// ========= CREAR PREFERENCIA =========
+// ========= CREAR PREFERENCIA PARA PLANES =========
 app.post("/create-preference", async (req, res) => {
   try {
     const { plan_type, user_email, user_id } = req.body;
-
-    console.log("👉 Petición recibida:", { plan_type, user_email, user_id });
 
     const PRICES = {
       publications_basic: 10,
@@ -125,10 +128,8 @@ app.post("/create-preference", async (req, res) => {
     };
 
     const amount = PRICES[plan_type];
-    if (!amount) {
-      console.error("❌ plan_type inválido:", plan_type);
+    if (!amount)
       return res.status(400).json({ error: "plan_type inválido" });
-    }
 
     const preferenceData = {
       items: [
@@ -140,20 +141,12 @@ app.post("/create-preference", async (req, res) => {
           currency_id: "ARS",
         },
       ],
-
       payer: { email: user_email },
-
-      // 👇 vuelve al HOME con query param
       back_urls: {
         success: "http://localhost:5173/?payment=success",
         failure: "http://localhost:5173/?payment=failure",
         pending: "http://localhost:5173/?payment=pending",
       },
-
-      // ❌ QUITAR esta línea mientras estés en localhost
-      // auto_return: "approved",
-
-      // para saber quién pagó qué plan
       external_reference: `${user_id}|${plan_type}`,
       notification_url: `${process.env.BASE_URL}/webhook-mercadopago`,
     };
@@ -167,47 +160,36 @@ app.post("/create-preference", async (req, res) => {
       result?.body?.init_point ||
       result?.body?.sandbox_init_point;
 
-    if (!initPoint) {
-      console.error("⚠️ MercadoPago NO devolvió init_point");
+    if (!initPoint)
       return res
         .status(500)
         .json({ error: "MercadoPago no devolvió init_point" });
-    }
 
     res.json({ init_point: initPoint });
   } catch (error) {
-    console.error("❌ ERROR EN MERCADO PAGO:", error);
+    console.error("❌ Error en create-preference:", error);
     res.status(500).json({ error: "Error al crear preferencia" });
   }
 });
 
-// ========= WEBHOOK =========
+// ========= WEBHOOK (tus planes) =========
 app.post("/webhook-mercadopago", async (req, res) => {
   try {
-    console.log("📩 Webhook recibido:", req.query, req.body);
+    console.log("📩 Webhook:", req.query, req.body);
 
     const topic = req.query.type || req.body.type;
 
     if (topic === "payment") {
       const paymentId = req.query["data.id"] || req.body.data?.id;
-      console.log("💳 paymentId:", paymentId);
-
       if (!paymentId) return res.sendStatus(400);
 
       const paymentClient = new Payment(mpClient);
       const payment = await paymentClient.get({ id: paymentId });
 
-      console.log("💳 Payment info:", payment);
-
       if (payment.status === "approved") {
-        const externalRef = payment.external_reference; // "userId|plan_type"
-        console.log("external_reference:", externalRef);
-
+        const externalRef = payment.external_reference;
         if (externalRef) {
           const [userId, planType] = externalRef.split("|");
-
-          console.log("✅ Pago aprobado para:", { userId, planType });
-
           await activarPlanUsuario(userId, planType, paymentId);
         }
       }
@@ -215,7 +197,7 @@ app.post("/webhook-mercadopago", async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Error en webhook MP:", err);
+    console.error("❌ Error en webhook:", err);
     res.sendStatus(500);
   }
 });
