@@ -119,7 +119,7 @@ app.post("/create-preference", async (req, res) => {
       publications_basic: 16300,
       publications_intermediate: 27100,
       publications_pro: 54200,
-      restaurant_mensual: 27100,
+      restaurant_mensual: 2,
     };
 
     const amount = PRICES[plan_type];

@@ -89,6 +89,10 @@ export default function GestionarRestaurante() {
   const [subscriptionExpired, setSubscriptionExpired] = useState(false);
   const [subLoading, setSubLoading] = useState(true);
 
+  // 🔹 Config: ¿requiere aprobación manual el restaurante?
+  const [requireRestaurantApproval, setRequireRestaurantApproval] =
+    useState(false);
+
   // ==== Mercado Pago connect ====
   const [mpConnecting, setMpConnecting] = useState(false);
 
@@ -255,6 +259,33 @@ export default function GestionarRestaurante() {
   }, [user]);
 
   // ==========================
+  //  Config: aprobación de restaurantes
+  // ==========================
+  useEffect(() => {
+    const loadConfigRestaurants = async () => {
+      try {
+        const cfgRef = doc(db, "settings", "restaurants");
+        const snap = await getDoc(cfgRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setRequireRestaurantApproval(
+            data.require_approval !== undefined ? data.require_approval : false
+          );
+        } else {
+          // por defecto: NO requiere aprobación manual
+          setRequireRestaurantApproval(false);
+        }
+      } catch (e) {
+        console.error("Error cargando config de restaurantes:", e);
+        // si falla, por seguridad lo dejamos auto-aprobado
+        setRequireRestaurantApproval(false);
+      }
+    };
+
+    loadConfigRestaurants();
+  }, []);
+
+  // ==========================
   //  Estado de Mercado Pago
   // ==========================
   useEffect(() => {
@@ -393,7 +424,7 @@ export default function GestionarRestaurante() {
   // ==========================
   //  Crear/actualizar restaurante
   // ==========================
-  const handleCreateOrUpdateRestaurant = async () => {
+    const handleCreateOrUpdateRestaurant = async () => {
     if (!user) return;
 
     if (
@@ -411,6 +442,11 @@ export default function GestionarRestaurante() {
 
     setSavingRestaurant(true);
 
+    // 👇 NUEVO: decidimos el status según la config del SuperAdmin
+    const status =
+      myRestaurant?.status ||
+      (requireRestaurantApproval ? "pending" : "approved");
+
     const data = {
       ...restaurantForm,
       min_order: parseFloat(restaurantForm.min_order) || 0,
@@ -418,8 +454,8 @@ export default function GestionarRestaurante() {
       owner_uid: user.uid,
       owner_email: user.email,
       rating: myRestaurant?.rating || 5,
-      status: myRestaurant?.status || "pending",
-      use_mp_payments: restaurantForm.use_mp_payments ?? true, // 👈 se guarda acá
+      status, // 👈 usamos la variable de arriba
+      use_mp_payments: restaurantForm.use_mp_payments ?? true,
       updatedAt: serverTimestamp(),
       ...(myRestaurant ? {} : { createdAt: serverTimestamp() }),
     };
@@ -427,9 +463,15 @@ export default function GestionarRestaurante() {
     try {
       await setDoc(doc(db, "restaurants", user.uid), data, { merge: true });
       setMyRestaurant({ id: user.uid, ...data });
+
       toast.success(
-        myRestaurant ? "Restaurante actualizado" : "Restaurante creado"
+        myRestaurant
+          ? "Restaurante actualizado"
+          : status === "approved"
+          ? "Restaurante creado y publicado"
+          : "Restaurante enviado para revisión"
       );
+
       setRestaurantDialogOpen(false);
     } catch (error) {
       toast.error("Error guardando restaurante");
@@ -437,6 +479,7 @@ export default function GestionarRestaurante() {
       setSavingRestaurant(false);
     }
   };
+
 
   const handleOpenRestaurantDialog = () => {
     // Onboarding Mercado Pago
@@ -621,7 +664,7 @@ export default function GestionarRestaurante() {
     window.location.href = url;
   };
 
-    const getOrderStatusConfig = (status) => {
+  const getOrderStatusConfig = (status) => {
     const configs = {
       pending: {
         label: "Pendiente",
@@ -662,8 +705,7 @@ export default function GestionarRestaurante() {
       .map(([category, items]) => ({ category, items }));
   }, [menuItems]);
 
-
-    // ==========================
+  // ==========================
   //  Render
   // ==========================
   if (authLoading) {

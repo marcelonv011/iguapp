@@ -165,6 +165,8 @@ export default function SuperAdminPanel() {
   });
 
   const [requireApproval, setRequireApproval] = useState(true);
+  const [requireRestaurantApproval, setRequireRestaurantApproval] =
+    useState(false); // 🔹 restaurantes
 
   // --- Validar SuperAdmin ---
   useEffect(() => {
@@ -182,8 +184,12 @@ export default function SuperAdminPanel() {
         navigate("/");
         return;
       }
+
       loadAll();
-      await loadConfigPublications();
+      await Promise.all([
+        loadConfigPublications(),
+        loadConfigRestaurants(), // 🔹 también cargamos restaurantes
+      ]);
     });
     return () => unsub();
   }, []);
@@ -232,6 +238,26 @@ export default function SuperAdminPanel() {
     }
   };
 
+  const loadConfigRestaurants = async () => {
+    try {
+      const cfgRef = doc(db, "settings", "restaurants");
+      const snap = await getDoc(cfgRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setRequireRestaurantApproval(
+          data.require_approval !== undefined ? data.require_approval : false
+        );
+      } else {
+        // Por defecto: NO requiere aprobación manual
+        setRequireRestaurantApproval(false);
+      }
+    } catch (e) {
+      console.error("Error cargando configuración de restaurantes:", e);
+      // si falla, por seguridad dejamos auto-aprobado
+      setRequireRestaurantApproval(false);
+    }
+  };
+
   const toggleRequireApproval = async () => {
     try {
       const newValue = !requireApproval;
@@ -255,6 +281,32 @@ export default function SuperAdminPanel() {
     } catch (e) {
       console.error(e);
       toast.error("No se pudo actualizar la configuración de publicaciones");
+    }
+  };
+
+  const toggleRequireRestaurantApproval = async () => {
+    try {
+      const newValue = !requireRestaurantApproval;
+      setRequireRestaurantApproval(newValue);
+
+      const cfgRef = doc(db, "settings", "restaurants");
+      await setDoc(
+        cfgRef,
+        {
+          require_approval: newValue,
+          updated_at: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      toast.success(
+        newValue
+          ? "Desde ahora los nuevos restaurantes quedarán en pendiente hasta que el SuperAdmin los apruebe."
+          : "Desde ahora los nuevos restaurantes se aprueban automáticamente al crearse."
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar la configuración de restaurantes");
     }
   };
 
@@ -689,6 +741,31 @@ export default function SuperAdminPanel() {
             accent="text-green-700"
           />
         </div>
+
+        {/* Config aprobación de restaurantes */}
+        <Card className="mb-4 rounded-2xl shadow-sm border border-slate-200 bg-slate-50/80">
+          <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Aprobación de restaurantes
+              </p>
+              <p className="text-xs text-slate-600">
+                {requireRestaurantApproval
+                  ? "Los nuevos restaurantes se crean en estado pending hasta que el SuperAdmin los apruebe."
+                  : "Los nuevos restaurantes se crean directamente en estado approved."}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleRequireRestaurantApproval}
+            >
+              {requireRestaurantApproval
+                ? "Pasar a aprobación automática"
+                : "Requerir aprobación manual"}
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Restaurantes pendientes de aprobación */}
         <Card className="mb-8 rounded-2xl shadow-sm">
