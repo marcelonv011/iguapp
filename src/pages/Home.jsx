@@ -131,8 +131,17 @@ async function filterRestaurantsByActiveSubscription(list) {
         const snap = await getDocs(qSub);
         if (snap.empty) return;
 
-        const docs = snap.docs.map((d) => d.data());
+        // Traemos todas las subs de ese mail
+        const allSubs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+        // 🔹 Nos quedamos SOLO con planes de restaurante
+        const restaurantSubs = allSubs.filter(
+          (s) => s.plan_type && s.plan_type.startsWith("restaurant")
+        );
+
+        if (restaurantSubs.length === 0) return;
+
+        // Elegimos la sub con end_date más lejana
         const pickBest = (arr) =>
           arr.reduce((best, cur) => {
             const getMs = (x) =>
@@ -146,7 +155,7 @@ async function filterRestaurantsByActiveSubscription(list) {
             return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
           }, null);
 
-        const sub = pickBest(docs);
+        const sub = pickBest(restaurantSubs);
         if (!sub) return;
 
         const expired = isExpired(sub.end_date);
@@ -157,6 +166,7 @@ async function filterRestaurantsByActiveSubscription(list) {
     })
   );
 
+  // 🔹 Solo restaurantes con plan de restaurante ACTIVO y NO vencido
   return list.filter((r) => {
     const info = resultByEmail[r.owner_email];
     if (!info) return false;
@@ -165,6 +175,7 @@ async function filterRestaurantsByActiveSubscription(list) {
     return true;
   });
 }
+
 
 // ==== Fetch destacado para Home (Publicaciones) ====
 async function fetchHomeFeaturedPublications() {
@@ -261,32 +272,74 @@ async function fetchHomeFeaturedRestaurants() {
     return snap.docs.map(normalize);
   };
 
-  // 1) Restaurantes aprobados, abiertos y (si tenés) campo featured_restaurant
+  // 👉 helper: le agrega promedio de rating y ordena por rating desc, devolviendo solo 3
+  const attachRatingsAndSort = async (list) => {
+    if (!list.length) return [];
+
+    // Traemos TODAS las reseñas (si después tenés MUCHÍSIMAS, se puede optimizar)
+    const snap = await getDocs(collection(db, "restaurant_reviews"));
+
+    const map = {}; // { [restaurant_id]: { sum, count, avg } }
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const restId = data.restaurant_id;
+      const rating = Number(data.rating || 0);
+      if (!restId || !rating) return;
+
+      if (!map[restId]) {
+        map[restId] = { sum: 0, count: 0, avg: 0 };
+      }
+      map[restId].sum += rating;
+      map[restId].count += 1;
+    });
+
+    Object.keys(map).forEach((id) => {
+      const { sum, count } = map[id];
+      map[id].avg = count > 0 ? sum / count : 0;
+    });
+
+    const withRatings = list.map((r) => {
+      const info = map[r.id] || { avg: 0, count: 0 };
+      return {
+        ...r,
+        rating_avg: info.avg,
+        rating_count: info.count,
+      };
+    });
+
+    // Ordenar por promedio de rating (desc) y quedarnos con los 3 mejores
+    withRatings.sort((a, b) => (b.rating_avg || 0) - (a.rating_avg || 0));
+
+    return withRatings.slice(0, 3);
+  };
+
+  // 1) Restaurantes aprobados, abiertos
   try {
     const q1 = fsQuery(
       col,
       where("status", "==", "approved"),
       where("is_open", "==", true),
       orderBy("createdAt", "desc"),
-      limit(8)
+      limit(20) // traemos algunos y después filtramos + top 3
     );
     let r1 = await tryQuery(q1);
     if (r1.length > 0) {
       const filtered = await filterRestaurantsByActiveSubscription(r1);
-      return filtered;
+      return await attachRatingsAndSort(filtered);
     }
   } catch (e) {
     console.warn("[home] q1 restaurantes destacados falló:", e?.code || e);
   }
 
-  // 2) Fallback: todos los aprobados (aunque estén cerrados), ordenados por fecha
+  // 2) Fallback: todos los aprobados, ordenados por fecha
   try {
     const q2 = fsQuery(col, where("status", "==", "approved"));
     let r2 = await tryQuery(q2);
     if (r2.length > 0) {
       r2.sort((a, b) => b.createdAt - a.createdAt);
       const filtered = await filterRestaurantsByActiveSubscription(r2);
-      return filtered.slice(0, 8);
+      return await attachRatingsAndSort(filtered);
     }
   } catch (e) {
     console.warn("[home] q2 restaurantes destacados falló:", e?.code || e);
@@ -312,7 +365,7 @@ export default function Home() {
     }
   }, []);
 
-    useEffect(() => {
+  useEffect(() => {
     const payment = searchParams.get("payment");
     if (!payment) return;
 
@@ -327,7 +380,6 @@ export default function Home() {
     // Limpio los parámetros para volver a "/" pelado
     setSearchParams({});
   }, [searchParams, setSearchParams]);
-
 
   // Publicaciones destacadas (con filtro de suscripción)
   const { data: publications = [], isLoading: loadingPubs } = useQuery({
@@ -753,7 +805,20 @@ export default function Home() {
                         </div>
                         <div className="flex items-center text-yellow-500">
                           <Star className="w-4 h-4 mr-1 fill-yellow-500" />
-                          {restaurant.rating ?? "5.0"}
+                          {restaurant.rating_count > 0 ? (
+                            <>
+                              <span className="text-sm font-semibold">
+                                {restaurant.rating_avg.toFixed(1)}
+                              </span>
+                              <span className="text-[11px] text-slate-500 ml-1">
+                                ({restaurant.rating_count})
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-500">
+                              Sin valoraciones
+                            </span>
+                          )}
                         </div>
                       </div>
                     </CardContent>
