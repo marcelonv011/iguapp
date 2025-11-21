@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
 
 // 🔹 Importar rutas OAuth
 const mpOAuthRoutes = require("./mercadopago");
@@ -29,6 +30,18 @@ if (!admin.apps.length) {
   });
 }
 const db = admin.firestore();
+
+// ========= NODEMAILER (feedback / contacto) =========
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: false, // true si usás 465
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
 
 // ========= MERCADO PAGO (planes actuales) =========
 const mpClient = new MercadoPagoConfig({
@@ -268,6 +281,55 @@ app.post("/delivery/create-order-mp", async (req, res) => {
       .json({ error: "Error al crear preferencia de delivery" });
   }
 });
+
+// ========= FEEDBACK / SUGERENCIAS / RECLAMOS =========
+// body: { name, email, type, message }
+app.post("/feedback", async (req, res) => {
+  try {
+    const { name, email, type, message } = req.body;
+
+    if (!email || !message) {
+      return res
+        .status(400)
+        .json({ error: "El email y el mensaje son obligatorios" });
+    }
+
+    const fromName = name?.trim() || "Usuario sin nombre";
+    const typeLabel = type || "Sin especificar";
+
+    const mailOptions = {
+      from: `"ConectCity - Feedback" <${process.env.SMTP_USER}>`,
+      to: process.env.FEEDBACK_TO || "conectcity1@gmail.com",
+      subject: `Nuevo ${typeLabel} desde ConectCity`,
+      text: `
+Tipo: ${typeLabel}
+Nombre: ${fromName}
+Email de contacto: ${email}
+
+Mensaje:
+${message}
+      `.trim(),
+      html: `
+        <h2>Nuevo ${typeLabel} desde ConectCity</h2>
+        <p><strong>Nombre:</strong> ${fromName}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Tipo:</strong> ${typeLabel}</p>
+        <p><strong>Mensaje:</strong></p>
+        <p style="white-space: pre-line;">${message}</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ Error al enviar feedback:", err);
+    return res
+      .status(500)
+      .json({ error: "Hubo un error al enviar el mensaje" });
+  }
+});
+
 
 // ========= WEBHOOK CORREGIDO =========
 app.post("/webhook-mercadopago", async (req, res) => {

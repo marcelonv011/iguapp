@@ -479,6 +479,31 @@ export default function Layout({ children }) {
                 ¿Querés publicar en ConectCity como negocio o profesional?
                 Escribinos y te asesoramos para empezar.
               </p>
+
+              {/* 👇 Nuevo: mail de contacto */}
+              <p className="text-slate-300 text-sm mt-3">
+                Correo de contacto:{" "}
+                <a
+                  href="mailto:conectcity1@gmail.com"
+                  className="text-sky-400 hover:underline"
+                >
+                  conectcity1@gmail.com
+                </a>
+              </p>
+
+              {/* 👇 Nuevo: botón para sugerencias / reclamos */}
+              <div className="mt-4">
+                <Link to="/sugerencias-reclamos">
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-gradient-to-r from-sky-600 to-blue-700 
+             text-white shadow-md hover:shadow-lg hover:-translate-y-0.5 
+             transition-all px-5 py-1.5"
+                  >
+                    Sugerencias y reclamos
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
 

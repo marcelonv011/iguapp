@@ -30,6 +30,7 @@ import MisPedidos from "@/pages/MisPedidos";
 import Planes from "@/pages/Planes";
 
 import "./index.css";
+import SugerenciasReclamos from "./pages/SugerenciasReclamos";
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -87,6 +88,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
               <Route path="/planes-publicar" element={<Planes />} />
+              <Route
+                path="/sugerencias-reclamos"
+                element={<SugerenciasReclamos />}
+              />
               {/* 🔒 Protegidas */}
               <Route
                 path="/admin"

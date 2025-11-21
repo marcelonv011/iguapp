@@ -16,11 +16,13 @@ import {
   Star,
   MapPin,
   Clock,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
 import { Badge } from "@/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 
 // ===== Firebase para filtrar por suscripción =====
 import { db } from "@/firebase";
@@ -175,7 +177,6 @@ async function filterRestaurantsByActiveSubscription(list) {
     return true;
   });
 }
-
 
 // ==== Fetch destacado para Home (Publicaciones) ====
 async function fetchHomeFeaturedPublications() {
@@ -355,6 +356,9 @@ export default function Home() {
   const navigate = useNavigate();
   const goToLogin = () => navigate("/login");
 
+  // 👇 NUEVO: estado para el modal de modo testing
+  const [showTestingModal, setShowTestingModal] = React.useState(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get("payment");
@@ -380,6 +384,18 @@ export default function Home() {
     // Limpio los parámetros para volver a "/" pelado
     setSearchParams({});
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    try {
+      const alreadySeen = localStorage.getItem("cc_testing_notice_seen");
+      if (!alreadySeen) {
+        setShowTestingModal(true);
+      }
+    } catch {
+      // si falla localStorage igual mostramos el modal
+      setShowTestingModal(true);
+    }
+  }, []);
 
   // Publicaciones destacadas (con filtro de suscripción)
   const { data: publications = [], isLoading: loadingPubs } = useQuery({
@@ -436,6 +452,71 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
+      {/* Modal Modo Testing */}
+      <Dialog
+        open={showTestingModal}
+        onOpenChange={(open) => {
+          setShowTestingModal(open);
+          if (!open) {
+            try {
+              localStorage.setItem("cc_testing_notice_seen", "1");
+            } catch {}
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg border border-red-500 bg-red-50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              ConectCity en modo TESTING (GRATUITO)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 text-sm text-red-800">
+            <p className="font-semibold">
+              La plataforma está en fase de pruebas. El acceso y las
+              publicaciones son <span className="underline">gratuitas</span> por
+              ahora.
+            </p>
+
+            <ul className="list-disc list-inside space-y-1">
+              <li>
+                Si encontrás algún error o algo raro, por favor escribinos a{" "}
+                <span className="font-semibold">conectcity1@gmail.com</span>.
+              </li>
+              <li>
+                Cuando te registrás e iniciás sesión, un{" "}
+                <strong>moderador</strong> revisa y aprueba tu cuenta antes de
+                que puedas empezar a publicar.
+              </li>
+              <li>
+                En el futuro, algunas funciones pasarán a ser{" "}
+                <strong>pagas</strong>, pero por ahora estamos en modo testing
+                abierto.
+              </li>
+            </ul>
+
+            <p className="text-xs text-red-600/80">
+              Gracias por ayudar a probar ConectCity. Tus comentarios nos sirven
+              muchísimo para mejorar la plataforma.
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  setShowTestingModal(false);
+                  try {
+                    localStorage.setItem("cc_testing_notice_seen", "1");
+                  } catch {}
+                }}
+              >
+                Entendido
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* ===== Hero Section ===== */}
       <section className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800 text-white py-20 overflow-hidden">
         {/* blobs decorativos */}
