@@ -46,10 +46,10 @@ export default function Delivery() {
   const [restaurants, setRestaurants] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-
   const [ratingsByRestaurant, setRatingsByRestaurant] = useState({});
   const [user, setUser] = useState(null);
   const [cityFilter, setCityFilter] = useState("all");
+  const [openFilter, setOpenFilter] = useState("all");
 
   // ==== Reportes ====
   const [reportRestaurant, setReportRestaurant] = useState(null);
@@ -97,49 +97,48 @@ export default function Delivery() {
   }, []);
 
   // ==== Cargar ratings desde restaurant_reviews y agrupar por restaurant_id ====
-useEffect(() => {
-  if (!restaurants.length) {
-    setRatingsByRestaurant({});
-    return;
-  }
-
-  const fetchRatings = async () => {
-    try {
-      const ref = collection(db, "restaurant_reviews");
-      // Traemos TODAS las reseñas (si más adelante tenés MUCHOS restaurantes, se puede optimizar)
-      const snapshot = await getDocs(ref);
-
-      const map = {}; // { [restaurant_id]: { sum, count, avg } }
-
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const restId = data.restaurant_id;
-        const rating = Number(data.rating || 0);
-
-        if (!restId || !rating) return;
-
-        if (!map[restId]) {
-          map[restId] = { sum: 0, count: 0, avg: 0 };
-        }
-        map[restId].sum += rating;
-        map[restId].count += 1;
-      });
-
-      // calcular promedio
-      Object.keys(map).forEach((id) => {
-        const { sum, count } = map[id];
-        map[id].avg = count > 0 ? sum / count : 0;
-      });
-
-      setRatingsByRestaurant(map);
-    } catch (err) {
-      console.error("Error cargando ratings:", err);
+  useEffect(() => {
+    if (!restaurants.length) {
+      setRatingsByRestaurant({});
+      return;
     }
-  };
 
-  fetchRatings();
-}, [restaurants]);
+    const fetchRatings = async () => {
+      try {
+        const ref = collection(db, "restaurant_reviews");
+        // Traemos TODAS las reseñas (si más adelante tenés MUCHOS restaurantes, se puede optimizar)
+        const snapshot = await getDocs(ref);
 
+        const map = {}; // { [restaurant_id]: { sum, count, avg } }
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const restId = data.restaurant_id;
+          const rating = Number(data.rating || 0);
+
+          if (!restId || !rating) return;
+
+          if (!map[restId]) {
+            map[restId] = { sum: 0, count: 0, avg: 0 };
+          }
+          map[restId].sum += rating;
+          map[restId].count += 1;
+        });
+
+        // calcular promedio
+        Object.keys(map).forEach((id) => {
+          const { sum, count } = map[id];
+          map[id].avg = count > 0 ? sum / count : 0;
+        });
+
+        setRatingsByRestaurant(map);
+      } catch (err) {
+        console.error("Error cargando ratings:", err);
+      }
+    };
+
+    fetchRatings();
+  }, [restaurants]);
 
   // ---- Helpers de fecha/suscripción ----
   const toJsDate = (v) => {
@@ -290,9 +289,16 @@ useEffect(() => {
       const city = (restaurant.city || "").trim();
       const matchesCity = cityFilter === "all" || city === cityFilter;
 
-      return matchesSearch && matchesCategory && matchesCity;
+      const matchesOpen =
+        openFilter === "all"
+          ? true
+          : openFilter === "open"
+          ? restaurant.is_open === true
+          : restaurant.is_open === false;
+
+      return matchesSearch && matchesCategory && matchesCity && matchesOpen;
     });
-  }, [restaurants, searchTerm, categoryFilter, cityFilter]);
+  }, [restaurants, searchTerm, categoryFilter, cityFilter, openFilter]);
 
   const categories = [
     { value: "pizza", label: "Pizza" },
@@ -336,7 +342,7 @@ useEffect(() => {
 
           {/* Filtros */}
           <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="md:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -385,6 +391,21 @@ useEffect(() => {
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Filtro abierto/cerrado 👇 */}
+              <Select
+                value={openFilter}
+                onValueChange={(value) => setOpenFilter(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Abiertos y cerrados</SelectItem>
+                  <SelectItem value="open">Solo abiertos</SelectItem>
+                  <SelectItem value="closed">Solo cerrados</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -417,12 +438,14 @@ useEffect(() => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRestaurants.map((restaurant) => {
               // === LÓGICA DE RATING DESDE restaurant_reviews ===
-const ratingInfo = ratingsByRestaurant[restaurant.id] || { avg: 0, count: 0 };
-const ratingCount = ratingInfo.count;
-const hasVotes = ratingCount > 0;
-const avgRating = hasVotes ? ratingInfo.avg : 0;
-const roundedAvg = hasVotes ? Math.round(avgRating) : 0;
-
+              const ratingInfo = ratingsByRestaurant[restaurant.id] || {
+                avg: 0,
+                count: 0,
+              };
+              const ratingCount = ratingInfo.count;
+              const hasVotes = ratingCount > 0;
+              const avgRating = hasVotes ? ratingInfo.avg : 0;
+              const roundedAvg = hasVotes ? Math.round(avgRating) : 0;
 
               return (
                 <Link key={restaurant.id} to={`/delivery/${restaurant.id}`}>
