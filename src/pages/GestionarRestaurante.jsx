@@ -89,6 +89,9 @@ export default function GestionarRestaurante() {
   const [subscriptionExpired, setSubscriptionExpired] = useState(false);
   const [subLoading, setSubLoading] = useState(true);
 
+  // ==== Mercado Pago connect ====
+  const [mpConnecting, setMpConnecting] = useState(false);
+
   // fecha por defecto = HOY
   const [ordersDateFilter, setOrdersDateFilter] = useState(() => {
     const d = new Date();
@@ -129,6 +132,7 @@ export default function GestionarRestaurante() {
     is_open: true,
     logo_url: "",
     cover_image: "",
+    use_mp_payments: true,
   });
 
   // Form item menú
@@ -335,6 +339,32 @@ export default function GestionarRestaurante() {
   }, [myRestaurant]);
 
   // ==========================
+  //  Mensajes al volver de Mercado Pago (?mp=...)
+  // ==========================
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mp = params.get("mp");
+
+    if (!mp) return;
+
+    if (mp === "connected") {
+      toast.success("Mercado Pago se conectó correctamente 🟢");
+    } else if (mp === "error") {
+      toast.error(
+        "Ocurrió un error al conectar con Mercado Pago. Intentá de nuevo."
+      );
+    }
+
+    // Limpiar el parámetro ?mp= de la URL para que no se repita el toast
+    params.delete("mp");
+    const newQuery = params.toString();
+    const newUrl = `${window.location.pathname}${
+      newQuery ? `?${newQuery}` : ""
+    }`;
+    window.history.replaceState({}, "", newUrl);
+  }, []);
+
+  // ==========================
   //  Upload imágenes (Cloudinary)
   // ==========================
   const handleImageUpload = async (e, field) => {
@@ -389,6 +419,7 @@ export default function GestionarRestaurante() {
       owner_email: user.email,
       rating: myRestaurant?.rating || 5,
       status: myRestaurant?.status || "pending",
+      use_mp_payments: restaurantForm.use_mp_payments ?? true, // 👈 se guarda acá
       updatedAt: serverTimestamp(),
       ...(myRestaurant ? {} : { createdAt: serverTimestamp() }),
     };
@@ -434,6 +465,7 @@ export default function GestionarRestaurante() {
         is_open: myRestaurant.is_open !== false,
         logo_url: myRestaurant.logo_url || "",
         cover_image: myRestaurant.cover_image || "",
+        use_mp_payments: myRestaurant.use_mp_payments !== false, // 👈 si no existe, true por defecto
       });
     } else {
       setRestaurantForm({
@@ -450,6 +482,7 @@ export default function GestionarRestaurante() {
         is_open: true,
         logo_url: "",
         cover_image: "",
+        use_mp_payments: true, // 👈 nuevo también en “crear”
       });
     }
 
@@ -569,11 +602,22 @@ export default function GestionarRestaurante() {
       return;
     }
 
-    // Endpoint de tu backend que inicia el OAuth con Mercado Pago
+    if (subscriptionExpired) {
+      toast.error("Tu suscripción está inactiva");
+      return;
+    }
+
     const apiBase = import.meta.env.VITE_API_BASE_URL;
+    if (!apiBase) {
+      toast.error("Falta configurar VITE_API_BASE_URL");
+      return;
+    }
+
+    setMpConnecting(true);
+
     const url = `${apiBase}/mercadopago/connect?restaurant_id=${myRestaurant.id}`;
 
-    // Redirigimos al usuario a tu backend → MP → callback → vuelve al front
+    // Redirigimos al backend → MP → callback → frontend
     window.location.href = url;
   };
 
@@ -686,6 +730,8 @@ export default function GestionarRestaurante() {
       )}`
     : "";
 
+  const isMpConnected = !!myRestaurant?.mp_connected;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-slate-100 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
@@ -790,17 +836,36 @@ export default function GestionarRestaurante() {
               {/* Botón para conectar con Mercado Pago */}
               <Button
                 variant="outline"
-                className="border-blue-600 text-blue-700 hover:bg-blue-50 w-full sm:w-auto text-xs sm:text-sm"
+                className={`w-full sm:w-auto text-xs sm:text-sm
+    ${
+      isMpConnected
+        ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+        : "border-blue-600 text-blue-700 hover:bg-blue-50"
+    }`}
                 onClick={handleConnectMercadoPago}
-                disabled={!myRestaurant || subscriptionExpired}
+                disabled={!myRestaurant || subscriptionExpired || mpConnecting}
               >
                 <img
-                  src="https://http2.mlstatic.com/frontend-assets/mp-web-navigation/ui-navigation/5.18.9/mercadopago/logo__large.png"
+                  src="https://img.icons8.com/color/452/mercado-pago.png"
                   alt="Mercado Pago"
                   className="h-4 mr-2"
                 />
-                Conectar con Mercado Pago
+
+                {isMpConnected
+                  ? mpConnecting
+                    ? "Reconfigurando Mercado Pago..."
+                    : "Mercado Pago conectado"
+                  : mpConnecting
+                  ? "Redirigiendo a Mercado Pago..."
+                  : "Conectar con Mercado Pago"}
               </Button>
+
+              {isMpConnected && (
+                <p className="text-[11px] text-emerald-700 flex items-center gap-1 mt-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                  Cuenta de Mercado Pago conectada para este restaurante.
+                </p>
+              )}
 
               {subscriptionExpired && (
                 <p className="text-[11px] text-red-600 text-right">
@@ -1511,6 +1576,34 @@ export default function GestionarRestaurante() {
                     </Badge>
                   </div>
 
+                  <div className="space-y-1">
+                    <p className="text-sm text-slate-600 mb-1">Mercado Pago</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        className={
+                          myRestaurant.mp_connected
+                            ? "bg-emerald-500"
+                            : "bg-slate-500"
+                        }
+                      >
+                        {myRestaurant.mp_connected
+                          ? "Conectado"
+                          : "No conectado"}
+                      </Badge>
+
+                      {myRestaurant.use_mp_payments === false && (
+                        <span className="text-xs text-slate-600">
+                          (desactivado para los pedidos)
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {myRestaurant.use_mp_payments === false
+                        ? "Los clientes solo pueden pagar en efectivo."
+                        : "Los clientes pueden pagar en efectivo y, si está conectado, con Mercado Pago."}
+                    </p>
+                  </div>
+
                   {myRestaurant.description && (
                     <div>
                       <p className="text-sm text-slate-600 mb-1">Descripción</p>
@@ -1752,6 +1845,32 @@ export default function GestionarRestaurante() {
                 }
               />
               <Label htmlFor="is_open">Restaurante abierto</Label>
+            </div>
+            <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-start gap-3">
+                <Switch
+                  id="use_mp_payments"
+                  checked={restaurantForm.use_mp_payments}
+                  onCheckedChange={(checked) =>
+                    setRestaurantForm((prev) => ({
+                      ...prev,
+                      use_mp_payments: checked,
+                    }))
+                  }
+                />
+                <div>
+                  <Label
+                    htmlFor="use_mp_payments"
+                    className="text-sm font-medium text-slate-900"
+                  >
+                    Recibir pagos con Mercado Pago
+                  </Label>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Si desactivás esta opción, tus clientes solo van a poder
+                    pagar <strong>en efectivo</strong> al recibir el pedido.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

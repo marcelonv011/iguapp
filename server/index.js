@@ -4,7 +4,7 @@ const cors = require("cors");
 const { MercadoPagoConfig, Preference, Payment } = require("mercadopago");
 const admin = require("firebase-admin");
 
-// 🔹 Importar rutas OAuth (nueva funcionalidad)
+// 🔹 Importar rutas OAuth
 const mpOAuthRoutes = require("./mercadopago");
 
 const app = express();
@@ -16,6 +16,10 @@ app.use(
 );
 app.use(express.json());
 
+// 🔹 FRONTEND BASE URL
+const FRONTEND_BASE_URL =
+  process.env.FRONTEND_BASE_URL || "http://localhost:5173";
+
 // ========= FIREBASE ADMIN =========
 if (!admin.apps.length) {
   const serviceAccount = require("./serviceAccount.json");
@@ -26,18 +30,16 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// ========= MERCADO PAGO (para tus planes actuales) =========
+// ========= MERCADO PAGO (planes actuales) =========
 const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN, // ⚠️ el que ya usabas antes
+  accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
-// ========= MONTAR RUTAS OAUTH DE MERCADO PAGO =========
-// /mercadopago/connect
-// /mercadopago/callback
+// ========= MONTAR RUTAS OAUTH MP =========
 app.use("/mercadopago", mpOAuthRoutes);
 
 // ================================
-// CONFIGURACIÓN DE PLANES / SUSCRIPCIONES
+// CONFIGURACIÓN DE PLANES
 // ================================
 const PLAN_CONFIG = {
   publications_basic: {
@@ -70,19 +72,13 @@ async function activarPlanUsuario(userId, planType, paymentId) {
   console.log("🔥 activarPlanUsuario()", { userId, planType, paymentId });
 
   const cfg = PLAN_CONFIG[planType];
-  if (!cfg) {
-    console.warn("Plan no configurado:", planType);
-    return;
-  }
+  if (!cfg) return console.warn("Plan no configurado:", planType);
 
   const userRef = db.collection("users").doc(userId);
-  const userSnap = await userRef.get();
-  if (!userSnap.exists) {
-    console.warn("Usuario no encontrado:", userId);
-    return;
-  }
+  const snap = await userRef.get();
+  if (!snap.exists) return console.warn("Usuario no encontrado:", userId);
 
-  const userData = userSnap.data();
+  const userData = snap.data();
   const email = userData.email;
 
   if (userData.role_type !== "superadmin") {
@@ -92,9 +88,9 @@ async function activarPlanUsuario(userId, planType, paymentId) {
 
   const now = new Date();
   const end = new Date(now);
-  end.setMonth(end.getMonth() + (cfg.months || 1));
+  end.setMonth(end.getMonth() + cfg.months);
 
-  const subDataBase = {
+  const subData = {
     user_email: email,
     plan_type: planType,
     product_type: cfg.product_type,
@@ -102,20 +98,19 @@ async function activarPlanUsuario(userId, planType, paymentId) {
     start_date: admin.firestore.Timestamp.fromDate(now),
     end_date: admin.firestore.Timestamp.fromDate(end),
     status: "active",
-    payment_id: paymentId ?? "optional",
+    payment_id: paymentId || "optional",
   };
 
   if (cfg.product_type === "publications") {
-    subDataBase.publications_limit = cfg.publications_limit;
-    subDataBase.publications_used = 0;
+    subData.publications_limit = cfg.publications_limit;
+    subData.publications_used = 0;
   }
 
-  await db.collection("subscriptions").add(subDataBase);
-
-  console.log("✅ Suscripción creada:", subDataBase);
+  await db.collection("subscriptions").add(subData);
+  console.log("✅ Suscripción creada:", subData);
 }
 
-// ========= CREAR PREFERENCIA PARA PLANES =========
+// ========= CREAR PREFERENCIA PLANES =========
 app.post("/create-preference", async (req, res) => {
   try {
     const { plan_type, user_email, user_id } = req.body;
@@ -128,8 +123,7 @@ app.post("/create-preference", async (req, res) => {
     };
 
     const amount = PRICES[plan_type];
-    if (!amount)
-      return res.status(400).json({ error: "plan_type inválido" });
+    if (!amount) return res.status(400).json({ error: "plan_type inválido" });
 
     const preferenceData = {
       items: [
@@ -143,9 +137,9 @@ app.post("/create-preference", async (req, res) => {
       ],
       payer: { email: user_email },
       back_urls: {
-        success: "http://localhost:5173/?payment=success",
-        failure: "http://localhost:5173/?payment=failure",
-        pending: "http://localhost:5173/?payment=pending",
+        success: `${FRONTEND_BASE_URL}/?payment=success`,
+        failure: `${FRONTEND_BASE_URL}/?payment=failure`,
+        pending: `${FRONTEND_BASE_URL}/?payment=pending`,
       },
       external_reference: `${user_id}|${plan_type}`,
       notification_url: `${process.env.BASE_URL}/webhook-mercadopago`,
@@ -154,25 +148,137 @@ app.post("/create-preference", async (req, res) => {
     const preference = new Preference(mpClient);
     const result = await preference.create({ body: preferenceData });
 
-    const initPoint =
-      result.init_point ||
-      result.sandbox_init_point ||
-      result?.body?.init_point ||
-      result?.body?.sandbox_init_point;
-
-    if (!initPoint)
-      return res
-        .status(500)
-        .json({ error: "MercadoPago no devolvió init_point" });
-
-    res.json({ init_point: initPoint });
+    res.json({
+      init_point:
+        result.init_point ||
+        result.sandbox_init_point ||
+        result?.body?.init_point ||
+        result?.body?.sandbox_init_point,
+    });
   } catch (error) {
     console.error("❌ Error en create-preference:", error);
     res.status(500).json({ error: "Error al crear preferencia" });
   }
 });
 
-// ========= WEBHOOK (tus planes) =========
+// =====================================================
+// FUNCIÓN PARA CALCULAR COMISIÓN QUE PAGA EL CLIENTE
+// =====================================================
+function calcularComisionCorrecta(montoNeto) {
+  const tasa = 0.0629; // 6,29 %
+  return +(montoNeto / (1 - tasa) - montoNeto).toFixed(2);
+}
+
+// ========= CREAR PREFERENCIA PARA DELIVERY =========
+app.post("/delivery/create-order-mp", async (req, res) => {
+  try {
+    const { order, order_id } = req.body;
+
+    if (!order) return res.status(400).json({ error: "order es requerido" });
+
+    const items = order.items || [];
+    if (!items.length)
+      return res.status(400).json({ error: "El pedido no tiene items" });
+
+    const restaurantId = order.restaurant_id;
+    if (!restaurantId)
+      return res.status(400).json({ error: "restaurant_id es requerido" });
+
+    // 🔥 Obtener restaurante
+    const restaurantSnap = await db
+      .collection("restaurants")
+      .doc(restaurantId)
+      .get();
+
+    if (!restaurantSnap.exists)
+      return res.status(404).json({ error: "Restaurante no encontrado" });
+
+    const restaurantData = restaurantSnap.data();
+
+    if (!restaurantData.mp_connected || !restaurantData.mp_access_token) {
+      return res.status(400).json({
+        error: "El restaurante no tiene Mercado Pago conectado",
+      });
+    }
+
+    // Cliente MP del restaurante
+    const restaurantMpClient = new MercadoPagoConfig({
+      accessToken: restaurantData.mp_access_token,
+    });
+
+    const preference = new Preference(restaurantMpClient);
+
+    // ---------------------
+    // CALCULAR ITEMS + COMISIÓN
+    // ---------------------
+    const baseItems = items.map((it) => ({
+      title: it.name,
+      unit_price: Number(it.price),
+      quantity: it.quantity,
+      currency_id: "ARS",
+    }));
+
+    const productsSubtotal = items.reduce(
+      (sum, it) => sum + Number(it.price) * it.quantity,
+      0
+    );
+
+    // Envío
+    const deliveryFee = Number(order.delivery_fee || 0);
+    if (deliveryFee > 0) {
+      baseItems.push({
+        title: "Envío",
+        unit_price: deliveryFee,
+        quantity: 1,
+        currency_id: "ARS",
+      });
+    }
+
+    // 🧮 COMISIÓN REAL → EL CLIENTE LA PAGA
+    const commissionBase = productsSubtotal + deliveryFee;
+    const commissionAmount = calcularComisionCorrecta(commissionBase);
+
+    if (commissionAmount > 0) {
+      baseItems.push({
+        title: "Comisión Mercado Pago (6,29%)",
+        unit_price: commissionAmount,
+        quantity: 1,
+        currency_id: "ARS",
+      });
+    }
+
+    // ---------------------
+    // PREFERENCIA MP
+    // ---------------------
+    const preferenceBody = {
+      items: baseItems,
+      back_urls: {
+        success: `${FRONTEND_BASE_URL}/mis-pedidos?payment=success`,
+        failure: `${FRONTEND_BASE_URL}/mis-pedidos?payment=failure`,
+        pending: `${FRONTEND_BASE_URL}/mis-pedidos?payment=pending`,
+      },
+      external_reference: order_id ? `order|${order_id}` : undefined,
+      notification_url: `${process.env.BASE_URL}/webhook-mercadopago`,
+    };
+
+    const result = await preference.create({ body: preferenceBody });
+
+    res.json({
+      init_point:
+        result.init_point ||
+        result.sandbox_init_point ||
+        result?.body?.init_point ||
+        result?.body?.sandbox_init_point,
+    });
+  } catch (error) {
+    console.error("❌ Error en /delivery/create-order-mp:", error);
+    res
+      .status(500)
+      .json({ error: "Error al crear preferencia de delivery" });
+  }
+});
+
+// ========= WEBHOOK =========
 app.post("/webhook-mercadopago", async (req, res) => {
   try {
     console.log("📩 Webhook:", req.query, req.body);
@@ -187,9 +293,9 @@ app.post("/webhook-mercadopago", async (req, res) => {
       const payment = await paymentClient.get({ id: paymentId });
 
       if (payment.status === "approved") {
-        const externalRef = payment.external_reference;
-        if (externalRef) {
-          const [userId, planType] = externalRef.split("|");
+        const [userId, planType] =
+          payment.external_reference?.split("|") || [];
+        if (userId && planType) {
           await activarPlanUsuario(userId, planType, paymentId);
         }
       }

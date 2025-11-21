@@ -49,6 +49,8 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
+const MP_COMMISSION_RATE = 0.0629; // 6,29%
+
 export default function RestaurantMenu() {
   const navigate = useNavigate();
   const { restaurantId } = useParams();
@@ -354,12 +356,26 @@ export default function RestaurantMenu() {
     setCart(cart.filter((item) => item.id !== itemId));
   };
 
+  // Subtotal de productos
   const getCartTotal = () => {
     return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
-  const getTotalWithDelivery = () => {
+  // Total base (productos + envío)
+  const getBaseTotal = () => {
     return getCartTotal() + (restaurant?.delivery_fee || 0);
+  };
+
+  // Monto de comisión MP (solo si elige Mercado Pago)
+  const getMpCommission = () => {
+    if (paymentMethod !== "mp") return 0;
+    const base = getBaseTotal();
+    return base * MP_COMMISSION_RATE;
+  };
+
+  // Total final que se cobra al usuario
+  const getFinalTotal = () => {
+    return getBaseTotal() + getMpCommission();
   };
 
   const totalItemsCart = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -411,6 +427,9 @@ export default function RestaurantMenu() {
       return;
     }
 
+    // Estado base según método de pago
+    const baseStatus = paymentMethod === "cash" ? "pending" : "mp_pending";
+
     const orderData = {
       restaurant_id: restaurant.id,
       restaurant_name: restaurant.name || "",
@@ -426,26 +445,86 @@ export default function RestaurantMenu() {
         quantity: item.quantity,
         price: item.price,
       })),
-      total: getTotalWithDelivery(),
+      total: getFinalTotal(),
       delivery_fee: restaurant.delivery_fee || 0,
-      payment_method: paymentMethod,
+      payment_method: paymentMethod, // "cash" o "mp"
       notes: notes,
-      status: "pending",
+      status: baseStatus,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
     try {
       setCreatingOrder(true);
-      await addDoc(collection(db, "orders"), orderData);
-      setCart([]);
-      setCartOpen(false);
-      toast.success(
-        "¡Pedido realizado con éxito! El restaurante fue notificado."
-      );
 
-      // 👇 Ir directo a MisPedidos
-      navigate("/mis-pedidos");
+      // 🟢 FLUJO EFECTIVO – igual que antes
+      if (paymentMethod === "cash") {
+        await addDoc(collection(db, "orders"), orderData);
+        setCart([]);
+        setCartOpen(false);
+        toast.success(
+          "¡Pedido realizado con éxito! El restaurante fue notificado."
+        );
+        navigate("/mis-pedidos");
+        return;
+      }
+
+      // 🟦 FLUJO MERCADO PAGO
+      if (paymentMethod === "mp") {
+        const apiBase = import.meta.env.VITE_API_BASE_URL;
+        if (!apiBase) {
+          toast.error("Falta configurar VITE_API_BASE_URL");
+          return;
+        }
+
+        // 1) Crear el pedido en Firestore con estado mp_pending
+        const orderRef = await addDoc(collection(db, "orders"), orderData);
+        const orderId = orderRef.id;
+
+        // 2) Armar un payload "plano" para enviar al backend (sin serverTimestamp)
+        const mpOrderPayload = {
+          order_id: orderId,
+          order: {
+            restaurant_id: orderData.restaurant_id,
+            restaurant_name: orderData.restaurant_name,
+            customer_uid: orderData.customer_uid,
+            customer_name: orderData.customer_name,
+            customer_phone: orderData.customer_phone,
+            delivery_address: orderData.delivery_address,
+            delivery_number: orderData.delivery_number,
+            delivery_city: orderData.delivery_city,
+            items: orderData.items,
+            total: orderData.total,
+            delivery_fee: orderData.delivery_fee,
+          },
+        };
+
+        const res = await fetch(`${apiBase}/delivery/create-order-mp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(mpOrderPayload),
+        });
+
+        if (!res.ok) {
+          throw new Error("Error creando preferencia de pago");
+        }
+
+        const data = await res.json();
+        const redirectUrl =
+          data.init_point || data.sandbox_init_point || data.redirect_url;
+
+        if (!redirectUrl) {
+          throw new Error("No se recibió URL de pago de Mercado Pago");
+        }
+
+        toast.success("Redirigiendo a Mercado Pago...");
+        setCart([]);
+        setCartOpen(false);
+
+        // Mandamos al checkout de MP
+        window.location.href = redirectUrl;
+        return;
+      }
     } catch (error) {
       console.error("Error creando pedido:", error);
       toast.error("No se pudo crear el pedido. Intentá nuevamente.");
@@ -481,6 +560,9 @@ export default function RestaurantMenu() {
     );
   }
 
+  // ¿Este restaurante puede usar Mercado Pago para pagos online?
+  const canUseMpPayments =
+    restaurant.mp_connected && restaurant.use_mp_payments !== false;
   // Agrupar items por categoría
   const itemsByCategory = menuItems.reduce((acc, item) => {
     const category = item.category || "Otros";
@@ -903,14 +985,25 @@ export default function RestaurantMenu() {
                             Método de pago
                           </Label>
                           <select
+                            id="payment"
                             className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
                             value={paymentMethod}
                             onChange={(e) => setPaymentMethod(e.target.value)}
                           >
+                            {/* Siempre disponible */}
                             <option value="cash">Efectivo</option>
-                            <option value="card">Tarjeta</option>
-                            <option value="transfer">Transferencia</option>
+
+                            {/* Solo si el restaurante tiene MP conectado Y tiene habilitados pagos con MP */}
+                            {canUseMpPayments && (
+                              <option value="mp">Mercado Pago</option>
+                            )}
                           </select>
+
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {canUseMpPayments
+                              ? "Podés pagar en efectivo o con Mercado Pago."
+                              : "Este restaurante solo acepta pagos en efectivo."}
+                          </p>
                         </div>
 
                         <div>
@@ -937,24 +1030,44 @@ export default function RestaurantMenu() {
                       <CardContent className="p-4 space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-slate-600">Subtotal</span>
-                          <span className="font-medium">
-                            ${getCartTotal().toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">Envío</span>
-                          <span className="font-medium">
-                            $
-                            {Number(
-                              restaurant?.delivery_fee || 0
-                            ).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="border-t pt-2 mt-1 flex justify-between font-bold text-base">
-                          <span>Total</span>
-                          <span className="text-red-600">
-                            ${getTotalWithDelivery().toLocaleString()}
-                          </span>
+                          <Card className="border-slate-200">
+                            <CardContent className="p-4 space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Subtotal</span>
+                                <span className="font-medium">
+                                  ${getCartTotal().toLocaleString()}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Envío</span>
+                                <span className="font-medium">
+                                  $
+                                  {Number(
+                                    restaurant?.delivery_fee || 0
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+
+                              {paymentMethod === "mp" && (
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600">
+                                    Comisión Mercado Pago (6,29%)
+                                  </span>
+                                  <span className="font-medium">
+                                    ${getMpCommission().toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="border-t pt-2 mt-1 flex justify-between font-bold text-base">
+                                <span>Total</span>
+                                <span className="text-red-600">
+                                  ${getFinalTotal().toLocaleString()}
+                                </span>
+                              </div>
+                            </CardContent>
+                          </Card>
                         </div>
                       </CardContent>
                     </Card>
@@ -1163,7 +1276,7 @@ export default function RestaurantMenu() {
               </span>
             </div>
             <span className="text-sm font-semibold">
-              ${getTotalWithDelivery().toLocaleString()}
+              ${getFinalTotal().toLocaleString()}
             </span>
           </button>
         </div>
