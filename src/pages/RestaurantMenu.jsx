@@ -605,6 +605,30 @@ export default function RestaurantMenu() {
       toast.error("No se pudo eliminar la reseña");
     }
   };
+  // ==========================
+  //  Promedio de rating desde reviews
+  // ==========================
+  const ratingInfo = (() => {
+    if (!reviews || reviews.length === 0) {
+      return { avg: 0, count: 0 };
+    }
+
+    let sum = 0;
+    let count = 0;
+
+    for (const r of reviews) {
+      const val = Number(r.rating || 0);
+      if (!isNaN(val) && val > 0) {
+        sum += val;
+        count += 1;
+      }
+    }
+
+    return {
+      avg: count > 0 ? sum / count : 0,
+      count,
+    };
+  })();
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-slate-50 via-slate-100 to-slate-50">
@@ -683,12 +707,15 @@ export default function RestaurantMenu() {
                   <div>
                     <p className="font-semibold leading-tight">Valoración</p>
                     <p className="text-white/80">
-                      {restaurant.rating
-                        ? `${restaurant.rating.toFixed(1)} / 5`
+                      {ratingInfo.count > 0
+                        ? `${ratingInfo.avg.toFixed(1)} / 5 (${
+                            ratingInfo.count
+                          })`
                         : "Nuevo"}
                     </p>
                   </div>
                 </div>
+
                 <div className="flex items-center gap-2 bg-black/15 rounded-xl px-3 py-2 backdrop-blur-sm">
                   <DollarSign className="w-4 h-4" />
                   <div>

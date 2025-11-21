@@ -46,6 +46,8 @@ export default function Delivery() {
   const [restaurants, setRestaurants] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+
+  const [ratingsByRestaurant, setRatingsByRestaurant] = useState({});
   const [user, setUser] = useState(null);
   const [cityFilter, setCityFilter] = useState("all");
 
@@ -93,6 +95,51 @@ export default function Delivery() {
 
     fetchRestaurants();
   }, []);
+
+  // ==== Cargar ratings desde restaurant_reviews y agrupar por restaurant_id ====
+useEffect(() => {
+  if (!restaurants.length) {
+    setRatingsByRestaurant({});
+    return;
+  }
+
+  const fetchRatings = async () => {
+    try {
+      const ref = collection(db, "restaurant_reviews");
+      // Traemos TODAS las reseñas (si más adelante tenés MUCHOS restaurantes, se puede optimizar)
+      const snapshot = await getDocs(ref);
+
+      const map = {}; // { [restaurant_id]: { sum, count, avg } }
+
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const restId = data.restaurant_id;
+        const rating = Number(data.rating || 0);
+
+        if (!restId || !rating) return;
+
+        if (!map[restId]) {
+          map[restId] = { sum: 0, count: 0, avg: 0 };
+        }
+        map[restId].sum += rating;
+        map[restId].count += 1;
+      });
+
+      // calcular promedio
+      Object.keys(map).forEach((id) => {
+        const { sum, count } = map[id];
+        map[id].avg = count > 0 ? sum / count : 0;
+      });
+
+      setRatingsByRestaurant(map);
+    } catch (err) {
+      console.error("Error cargando ratings:", err);
+    }
+  };
+
+  fetchRatings();
+}, [restaurants]);
+
 
   // ---- Helpers de fecha/suscripción ----
   const toJsDate = (v) => {
@@ -369,22 +416,13 @@ export default function Delivery() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRestaurants.map((restaurant) => {
-              // === LÓGICA DE RATING COMO EN EMPRENDIMIENTOS ===
-              const ratingCount =
-                typeof restaurant.rating_count === "number"
-                  ? restaurant.rating_count
-                  : 0;
+              // === LÓGICA DE RATING DESDE restaurant_reviews ===
+const ratingInfo = ratingsByRestaurant[restaurant.id] || { avg: 0, count: 0 };
+const ratingCount = ratingInfo.count;
+const hasVotes = ratingCount > 0;
+const avgRating = hasVotes ? ratingInfo.avg : 0;
+const roundedAvg = hasVotes ? Math.round(avgRating) : 0;
 
-              const hasVotes = ratingCount > 0;
-
-              const avgRating =
-                hasVotes &&
-                typeof restaurant.rating === "number" &&
-                !isNaN(restaurant.rating)
-                  ? restaurant.rating
-                  : 0;
-
-              const roundedAvg = hasVotes ? Math.round(avgRating) : 0;
 
               return (
                 <Link key={restaurant.id} to={`/delivery/${restaurant.id}`}>
