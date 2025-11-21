@@ -162,14 +162,14 @@ app.post("/create-preference", async (req, res) => {
 });
 
 // =====================================================
-// FUNCIÓN PARA CALCULAR COMISIÓN QUE PAGA EL CLIENTE
+// FUNCIÓN PARA CALCULAR COMISIÓN
 // =====================================================
 function calcularComisionCorrecta(montoNeto) {
   const tasa = 0.0629; // 6,29 %
   return +(montoNeto / (1 - tasa) - montoNeto).toFixed(2);
 }
 
-// ========= CREAR PREFERENCIA PARA DELIVERY =========
+// ========= CREAR PREFERENCIA DELIVERY =========
 app.post("/delivery/create-order-mp", async (req, res) => {
   try {
     const { order, order_id } = req.body;
@@ -184,7 +184,6 @@ app.post("/delivery/create-order-mp", async (req, res) => {
     if (!restaurantId)
       return res.status(400).json({ error: "restaurant_id es requerido" });
 
-    // 🔥 Obtener restaurante
     const restaurantSnap = await db
       .collection("restaurants")
       .doc(restaurantId)
@@ -201,16 +200,13 @@ app.post("/delivery/create-order-mp", async (req, res) => {
       });
     }
 
-    // Cliente MP del restaurante
     const restaurantMpClient = new MercadoPagoConfig({
       accessToken: restaurantData.mp_access_token,
     });
 
     const preference = new Preference(restaurantMpClient);
 
-    // ---------------------
-    // CALCULAR ITEMS + COMISIÓN
-    // ---------------------
+    // Calcular items
     const baseItems = items.map((it) => ({
       title: it.name,
       unit_price: Number(it.price),
@@ -218,13 +214,13 @@ app.post("/delivery/create-order-mp", async (req, res) => {
       currency_id: "ARS",
     }));
 
-    const productsSubtotal = items.reduce(
-      (sum, it) => sum + Number(it.price) * it.quantity,
+    const subtotal = items.reduce(
+      (acc, it) => acc + Number(it.price) * it.quantity,
       0
     );
 
-    // Envío
     const deliveryFee = Number(order.delivery_fee || 0);
+
     if (deliveryFee > 0) {
       baseItems.push({
         title: "Envío",
@@ -234,9 +230,7 @@ app.post("/delivery/create-order-mp", async (req, res) => {
       });
     }
 
-    // 🧮 COMISIÓN REAL → EL CLIENTE LA PAGA
-    const commissionBase = productsSubtotal + deliveryFee;
-    const commissionAmount = calcularComisionCorrecta(commissionBase);
+    const commissionAmount = calcularComisionCorrecta(subtotal + deliveryFee);
 
     if (commissionAmount > 0) {
       baseItems.push({
@@ -247,9 +241,6 @@ app.post("/delivery/create-order-mp", async (req, res) => {
       });
     }
 
-    // ---------------------
-    // PREFERENCIA MP
-    // ---------------------
     const preferenceBody = {
       items: baseItems,
       back_urls: {
@@ -278,27 +269,74 @@ app.post("/delivery/create-order-mp", async (req, res) => {
   }
 });
 
-// ========= WEBHOOK =========
+// ========= WEBHOOK CORREGIDO =========
 app.post("/webhook-mercadopago", async (req, res) => {
   try {
     console.log("📩 Webhook:", req.query, req.body);
 
-    const topic = req.query.type || req.body.type;
+    // tipo de evento (por si lo querés loguear o filtrar)
+    const topic = req.query.topic || req.query.type || req.body.type;
+    console.log("📌 topic:", topic);
 
-    if (topic === "payment") {
-      const paymentId = req.query["data.id"] || req.body.data?.id;
-      if (!paymentId) return res.sendStatus(400);
+    // ID del pago (puede venir en distintos lugares)
+    const paymentId =
+      req.query.id ||
+      req.query["data.id"] ||
+      req.body.data?.id;
 
-      const paymentClient = new Payment(mpClient);
-      const payment = await paymentClient.get({ id: paymentId });
+    if (!paymentId) {
+      console.log("⚠️ Sin paymentId, ignorado");
+      return res.sendStatus(200);
+    }
 
-      if (payment.status === "approved") {
-        const [userId, planType] =
-          payment.external_reference?.split("|") || [];
-        if (userId && planType) {
-          await activarPlanUsuario(userId, planType, paymentId);
-        }
+    const paymentClient = new Payment(mpClient);
+    const payment = await paymentClient.get({ id: paymentId });
+
+    console.log("💳 Pago recibido:", {
+      id: payment.id,
+      status: payment.status,
+      external_reference: payment.external_reference,
+    });
+
+    if (payment.status !== "approved") {
+      return res.sendStatus(200);
+    }
+
+    const external = payment.external_reference || "";
+
+    // -------------------------
+    // A) PAGO DE DELIVERY
+    // external_reference = "order|<orderId>"
+    // -------------------------
+    if (external.startsWith("order|")) {
+      const [, orderId] = external.split("|");
+
+      console.log("📦 Pago de un PEDIDO:", orderId);
+
+      try {
+        await db.collection("orders").doc(orderId).update({
+          status: "paid",
+          payment_id: paymentId,
+        });
+        console.log("✅ Pedido marcado como pagado");
+      } catch (err) {
+        console.log("⚠️ No se pudo actualizar el pedido:", err);
       }
+
+      return res.sendStatus(200);
+    }
+
+    // -------------------------
+    // B) PAGO DE PLAN / SUSCRIPCIÓN
+    // external_reference = "userId|planType"
+    // -------------------------
+    const [userId, planType] = external.split("|");
+
+    if (userId && planType && PLAN_CONFIG[planType]) {
+      console.log("🎉 Activando plan:", { userId, planType });
+      await activarPlanUsuario(userId, planType, paymentId);
+    } else {
+      console.warn("❌ external_reference inválida o plan no configurado:", external);
     }
 
     res.sendStatus(200);

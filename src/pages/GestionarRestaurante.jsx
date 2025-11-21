@@ -628,6 +628,12 @@ export default function GestionarRestaurante() {
         icon: AlertCircle,
         color: "bg-yellow-500",
       },
+      // 🔹 NUEVO: pago confirmado (por transferencia, etc.)
+      paid: {
+        label: "Pago confirmado",
+        icon: CheckCircle,
+        color: "bg-emerald-500",
+      },
       preparing: { label: "Preparando", icon: Clock, color: "bg-blue-500" },
       on_the_way: { label: "En camino", icon: Truck, color: "bg-purple-500" },
       delivered: {
@@ -1349,14 +1355,24 @@ export default function GestionarRestaurante() {
                                   <strong>Dirección:</strong>{" "}
                                   {order.delivery_address}
                                 </p>
-                                <p>
-                                  <strong>Pago:</strong>{" "}
-                                  {order.payment_method === "cash"
-                                    ? "Efectivo"
-                                    : order.payment_method === "card"
-                                    ? "Tarjeta"
-                                    : "Transferencia"}
+                                <p className="flex flex-wrap items-center gap-2">
+                                  <span>
+                                    <strong>Pago:</strong>{" "}
+                                    {order.payment_method === "cash"
+                                      ? "Efectivo"
+                                      : order.payment_method === "mp"
+                                      ? "Mercado Pago"
+                                      : "Transferencia"}
+                                  </span>
+
+                                  {/* 🔹 Si el estado es paid, mostrar “Pago confirmado” */}
+                                  {order.status === "paid" && (
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      Pago confirmado
+                                    </span>
+                                  )}
                                 </p>
+
                                 {order.notes && (
                                   <p>
                                     <strong>Notas:</strong> {order.notes}
@@ -1401,7 +1417,9 @@ export default function GestionarRestaurante() {
                               {order.status !== "delivered" &&
                                 order.status !== "cancelled" && (
                                   <div className="flex flex-wrap gap-2 pt-2">
-                                    {order.status === "pending" && (
+                                    {/* 🔹 Para PENDIENTE o PAGADO: botón aceptar / empezar preparación */}
+                                    {(order.status === "pending" ||
+                                      order.status === "paid") && (
                                       <Button
                                         size="sm"
                                         onClick={() =>
@@ -1416,9 +1434,37 @@ export default function GestionarRestaurante() {
                                         }
                                         className="bg-blue-600 hover:bg-blue-700"
                                       >
-                                        Aceptar Pedido
+                                        {order.status === "paid"
+                                          ? "Empezar a preparar"
+                                          : "Aceptar pedido"}
                                       </Button>
                                     )}
+
+                                    {/* 🔹 Solo para transferencias pendientes: marcar pago recibido */}
+                                    {order.status === "pending" &&
+                                      order.payment_method === "transfer" && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="border-emerald-500 text-emerald-700 hover:bg-emerald-50"
+                                          disabled={
+                                            updatingOrderStatusId === order.id
+                                          }
+                                          onClick={() =>
+                                            updateOrderStatus(
+                                              order.id,
+                                              "paid",
+                                              {
+                                                payment_confirmed_by:
+                                                  "restaurant",
+                                              }
+                                            )
+                                          }
+                                        >
+                                          Marcar pago recibido
+                                        </Button>
+                                      )}
+
                                     {order.status === "preparing" && (
                                       <Button
                                         size="sm"
@@ -1433,9 +1479,10 @@ export default function GestionarRestaurante() {
                                         }
                                         className="bg-purple-600 hover:bg-purple-700"
                                       >
-                                        Marcar en Camino
+                                        Marcar en camino
                                       </Button>
                                     )}
+
                                     {order.status === "on_the_way" && (
                                       <Button
                                         size="sm"
@@ -1450,9 +1497,11 @@ export default function GestionarRestaurante() {
                                         }
                                         className="bg-green-600 hover:bg-green-700"
                                       >
-                                        Marcar Entregado
+                                        Marcar entregado
                                       </Button>
                                     )}
+
+                                    {/* Botón cancelar igual que antes */}
                                     <Button
                                       size="sm"
                                       variant="outline"

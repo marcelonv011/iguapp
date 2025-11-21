@@ -56,7 +56,6 @@ const calcularMpCommissionCorrecta = (montoNeto) => {
   return Number((montoNeto / (1 - tasa) - montoNeto).toFixed(2));
 };
 
-
 export default function RestaurantMenu() {
   const navigate = useNavigate();
   const { restaurantId } = useParams();
@@ -191,7 +190,7 @@ export default function RestaurantMenu() {
         const qRef = query(
           collection(db, "restaurant_reviews"),
           where("restaurant_id", "==", restaurantId),
-          orderBy("createdAt", "desc")
+          orderBy("created_at", "desc")
         );
 
         const snap = await getDocs(qRef);
@@ -374,11 +373,10 @@ export default function RestaurantMenu() {
 
   // Monto de comisión MP (solo si elige Mercado Pago)
   const getMpCommission = () => {
-  if (paymentMethod !== "mp") return 0;
-  const base = getBaseTotal(); // productos + envío
-  return calcularMpCommissionCorrecta(base);
-};
-
+    if (paymentMethod !== "mp") return 0;
+    const base = getBaseTotal(); // productos + envío
+    return calcularMpCommissionCorrecta(base);
+  };
 
   // Total final que se cobra al usuario
   const getFinalTotal = () => {
@@ -1292,11 +1290,10 @@ export default function RestaurantMenu() {
 
                   {r.comment && <p className="text-sm mt-2">{r.comment}</p>}
 
-                  {r.createdAt?.toDate && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      {r.createdAt.toDate().toLocaleString()}
-                    </p>
-                  )}
+                  {r.created_at &&
+                    typeof r.created_at.toDate === "function" && (
+                      <p>{r.created_at.toDate().toLocaleString()}</p>
+                    )}
                 </CardContent>
               </Card>
             ))}

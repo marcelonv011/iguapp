@@ -172,77 +172,76 @@ export default function MisPedidos() {
   };
 
   const handleSubmitReview = async (order) => {
-  if (!user) {
-    toast.error("Debés iniciar sesión para dejar una reseña");
-    return;
-  }
-  if (!reviewRating || reviewRating < 1 || reviewRating > 5) {
-    toast.error("Elegí una puntuación de 1 a 5 estrellas");
-    return;
-  }
+    if (!user) {
+      toast.error("Debés iniciar sesión para dejar una reseña");
+      return;
+    }
+    if (!reviewRating || reviewRating < 1 || reviewRating > 5) {
+      toast.error("Elegí una puntuación de 1 a 5 estrellas");
+      return;
+    }
 
-  const restaurantId = order.restaurant_id;
-  const restaurantRef = doc(db, "restaurants", restaurantId);
+    const restaurantId = order.restaurant_id;
+    const restaurantRef = doc(db, "restaurants", restaurantId);
 
-  try {
-    setSubmittingReview(true);
+    try {
+      setSubmittingReview(true);
 
-    // 1) Crear reseña en restaurant_reviews
-    await addDoc(collection(db, "restaurant_reviews"), {
-      restaurant_id: restaurantId,
-      restaurant_name: order.restaurant_name || "",
-      order_id: order.id,
-      user_uid: user.uid,
-      user_email: user.email || null,
-      user_name: user.displayName || order.customer_name || "",
-      rating: reviewRating,
-      comment: reviewComment.trim(),
-      created_at: serverTimestamp(),
-    });
-
-    // 2) Actualizar rating acumulado del restaurante
-    await runTransaction(db, async (tx) => {
-      const restSnap = await tx.get(restaurantRef);
-      if (!restSnap.exists()) {
-        throw new Error("Restaurante no encontrado");
-      }
-
-      const data = restSnap.data();
-      let count = data.rating_count || 0;
-      let sum = data.rating_sum || 0;
-
-      count += 1;
-      sum += reviewRating;
-
-      const avg = count > 0 ? sum / count : 0;
-
-      tx.update(restaurantRef, {
-        rating_count: count,
-        rating_sum: sum,
-        rating: avg,
+      // 1) Crear reseña en restaurant_reviews
+      await addDoc(collection(db, "restaurant_reviews"), {
+        restaurant_id: restaurantId,
+        restaurant_name: order.restaurant_name || "",
+        order_id: order.id,
+        user_uid: user.uid,
+        user_email: user.email || null,
+        user_name: user.displayName || order.customer_name || "",
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+        created_at: serverTimestamp(),
       });
-    });
 
-    // 3) Marcar el pedido como reseñado
-    await updateDoc(doc(db, "orders", order.id), {
-      review_submitted: true,
-      updatedAt: serverTimestamp(),
-    });
+      // 2) Actualizar rating acumulado del restaurante
+      await runTransaction(db, async (tx) => {
+        const restSnap = await tx.get(restaurantRef);
+        if (!restSnap.exists()) {
+          throw new Error("Restaurante no encontrado");
+        }
 
-    toast.success("¡Gracias por tu reseña!");
+        const data = restSnap.data();
+        let count = data.rating_count || 0;
+        let sum = data.rating_sum || 0;
 
-    // Resetear estado del formulario
-    setReviewingOrderId(null);
-    setReviewRating(5);
-    setReviewComment("");
-  } catch (err) {
-    console.error("Error al guardar reseña:", err);
-    toast.error("No se pudo guardar la reseña. Intentá de nuevo.");
-  } finally {
-    setSubmittingReview(false);
-  }
-};
+        count += 1;
+        sum += reviewRating;
 
+        const avg = count > 0 ? sum / count : 0;
+
+        tx.update(restaurantRef, {
+          rating_count: count,
+          rating_sum: sum,
+          rating: avg,
+        });
+      });
+
+      // 3) Marcar el pedido como reseñado
+      await updateDoc(doc(db, "orders", order.id), {
+        review_submitted: true,
+        updatedAt: serverTimestamp(),
+      });
+
+      toast.success("¡Gracias por tu reseña!");
+
+      // Resetear estado del formulario
+      setReviewingOrderId(null);
+      setReviewRating(5);
+      setReviewComment("");
+    } catch (err) {
+      console.error("Error al guardar reseña:", err);
+      toast.error("No se pudo guardar la reseña. Intentá de nuevo.");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   // === 1) Filtrar por fecha solamente (para usar en contadores + lista) ===
   const dateFilteredOrders = useMemo(() => {
@@ -518,10 +517,8 @@ export default function MisPedidos() {
                         <p className="text-sm text-slate-600">
                           {order.payment_method === "cash"
                             ? "Efectivo"
-                            : order.payment_method === "card"
-                            ? "Tarjeta"
-                            : order.payment_method === "transfer"
-                            ? "Transferencia"
+                            : order.payment_method === "mp"
+                            ? "Mercado Pago"
                             : "No especificado"}
                         </p>
                       </div>
