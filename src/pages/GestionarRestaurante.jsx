@@ -16,6 +16,8 @@ import {
   XCircle,
   MapPin,
   ExternalLink,
+  Lock,
+  Unlock,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
@@ -424,7 +426,7 @@ export default function GestionarRestaurante() {
   // ==========================
   //  Crear/actualizar restaurante
   // ==========================
-    const handleCreateOrUpdateRestaurant = async () => {
+  const handleCreateOrUpdateRestaurant = async () => {
     if (!user) return;
 
     if (
@@ -480,6 +482,47 @@ export default function GestionarRestaurante() {
     }
   };
 
+  const handleToggleRestaurantOpen = async () => {
+    if (!myRestaurant) return;
+
+    // 🚫 Si no tiene suscripción activa, no dejar abrir/cerrar
+    if (subscriptionExpired) {
+      toast.error(
+        "Necesitás un plan de restaurante activo para abrir o cerrar tu restaurante."
+      );
+      return;
+    }
+
+    // Si está abierto, pedimos confirmación para cerrarlo
+    if (myRestaurant.is_open) {
+      const ok = confirm(
+        "¿Seguro que querés cerrar el restaurante? No va a recibir nuevos pedidos mientras esté cerrado."
+      );
+      if (!ok) return;
+    }
+
+    try {
+      const newIsOpen = !myRestaurant.is_open;
+
+      await updateDoc(doc(db, "restaurants", myRestaurant.id), {
+        is_open: newIsOpen,
+        updatedAt: serverTimestamp(),
+      });
+
+      setMyRestaurant((prev) =>
+        prev ? { ...prev, is_open: newIsOpen } : prev
+      );
+
+      toast.success(
+        newIsOpen
+          ? "Restaurante abierto nuevamente. Ya puede recibir pedidos."
+          : "Restaurante cerrado. No va a recibir nuevos pedidos."
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo actualizar el estado del restaurante");
+    }
+  };
 
   const handleOpenRestaurantDialog = () => {
     // Onboarding Mercado Pago
@@ -819,7 +862,7 @@ export default function GestionarRestaurante() {
 
                   <Button
                     className="mt-3 bg-red-600 hover:bg-red-700"
-                    onClick={() => navigate("/suscripcion")}
+                    onClick={() => navigate("/planes-publicar")}
                   >
                     Renovar suscripción
                   </Button>
@@ -847,7 +890,7 @@ export default function GestionarRestaurante() {
                   <Clock className="w-5 h-5 text-amber-600 mt-0.5" />
                 )}
 
-                <div>
+                <div className="space-y-1">
                   <h3 className="font-semibold text-sm">
                     {myRestaurant.status === "approved"
                       ? "Tu restaurante ya fue aprobado"
@@ -862,68 +905,141 @@ export default function GestionarRestaurante() {
                       ? "Podés editar la información del restaurante y volver a guardar para que lo revisemos nuevamente."
                       : "Nuestro equipo va a revisar tu restaurante. Mientras esté pendiente, los clientes todavía no lo ven en la app."}
                   </p>
+
+                  {!subLoading && !subscriptionExpired && subscription && (
+                    <p className="text-[11px] text-emerald-700 mt-2 inline-flex items-center gap-1.5 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      Plan activo hasta{" "}
+                      {toJsDate(subscription.end_date)?.toLocaleDateString()}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
+            {/* Izquierda: icono + info básica */}
+            <div className="flex items-start gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20">
                 <UtensilsCrossed className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-                  {myRestaurant ? myRestaurant.name : "Mi Restaurante"}
-                </h1>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+                    {myRestaurant ? myRestaurant.name : "Mi Restaurante"}
+                  </h1>
+
+                  {myRestaurant && (
+                    <Badge
+                      className={`inline-flex items-center gap-1 text-[11px] ${
+                        myRestaurant.is_open ? "bg-emerald-500" : "bg-red-500"
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-white/70" />
+                      {myRestaurant.is_open ? "Abierto" : "Cerrado"}
+                    </Badge>
+                  )}
+                </div>
+
                 <p className="text-slate-600 text-sm md:text-base">
                   Panel para gestionar tu menú, tus pedidos y la información de
                   tu negocio.
                 </p>
-                {!mpFastMode && !mpLoading && (
-                  <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 inline-flex px-2 py-1 rounded-full border border-amber-200">
-                    Antes de crear el restaurante, activá la acreditación
-                    inmediata en Mercado Pago (te guiamos paso a paso).
+
+                {subscriptionExpired && (
+                  <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3" />
+                    Tu plan está vencido. Podés renovarlo desde la sección{" "}
+                    <span className="font-semibold">Planes</span>.
                   </p>
                 )}
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <Button
-                onClick={handleOpenRestaurantDialog}
-                className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30 w-full sm:w-auto"
-                disabled={subscriptionExpired}
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
-              </Button>
 
-              {/* Botón para conectar con Mercado Pago */}
-              <Button
-                variant="outline"
-                className={`w-full sm:w-auto text-xs sm:text-sm
-    ${
-      isMpConnected
-        ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50"
-        : "border-blue-600 text-blue-700 hover:bg-blue-50"
-    }`}
-                onClick={handleConnectMercadoPago}
-                disabled={!myRestaurant || subscriptionExpired || mpConnecting}
-              >
-                <img
-                  src="https://img.icons8.com/color/452/mercado-pago.png"
-                  alt="Mercado Pago"
-                  className="h-4 mr-2"
-                />
+            {/* Derecha: botones de acción */}
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+              {myRestaurant && (
+                <div className="inline-flex items-center gap-2 text-[11px] px-2.5 py-1 rounded-full bg-slate-900 text-slate-50 shadow-sm">
+                  {myRestaurant.is_open ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>Recibiendo pedidos ahora mismo</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                      <span>Cerrado para los clientes</span>
+                    </>
+                  )}
+                </div>
+              )}
 
-                {isMpConnected
-                  ? mpConnecting
-                    ? "Reconfigurando Mercado Pago..."
-                    : "Mercado Pago conectado"
-                  : mpConnecting
-                  ? "Redirigiendo a Mercado Pago..."
-                  : "Conectar con Mercado Pago"}
-              </Button>
+              <div className="flex flex-wrap gap-2 w-full sm:justify-end">
+                <Button
+                  onClick={handleOpenRestaurantDialog}
+                  className="bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/30 flex-1 sm:flex-none"
+                  disabled={subscriptionExpired}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  {myRestaurant ? "Editar Restaurante" : "Crear Restaurante"}
+                </Button>
+
+                {myRestaurant && (
+                  <Button
+                    variant="outline"
+                    className={`flex-1 sm:flex-none text-xs sm:text-sm inline-flex items-center justify-center gap-1 ${
+                      myRestaurant.is_open
+                        ? "border-red-500 text-red-600 hover:bg-red-50"
+                        : "border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                    }`}
+                    onClick={handleToggleRestaurantOpen}
+                    disabled={restaurantLoading || subscriptionExpired} // 👈 AÑADIDO
+                  >
+                    {myRestaurant.is_open ? (
+                      <>
+                        <Lock className="w-3 h-3" />
+                        Cerrar restaurante
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-3 h-3" />
+                        Abrir restaurante
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {/* Botón Mercado Pago */}
+                <Button
+                  variant="outline"
+                  className={`flex-1 sm:flex-none text-xs sm:text-sm inline-flex items-center justify-center
+      ${
+        isMpConnected
+          ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+          : "border-blue-600 text-blue-700 hover:bg-blue-50"
+      }`}
+                  onClick={handleConnectMercadoPago}
+                  disabled={
+                    !myRestaurant || subscriptionExpired || mpConnecting
+                  }
+                >
+                  <img
+                    src="https://img.icons8.com/color/452/mercado-pago.png"
+                    alt="Mercado Pago"
+                    className="h-4 mr-2"
+                  />
+
+                  {isMpConnected
+                    ? mpConnecting
+                      ? "Reconfigurando Mercado Pago..."
+                      : "Mercado Pago conectado"
+                    : mpConnecting
+                    ? "Redirigiendo a Mercado Pago..."
+                    : "Conectar con Mercado Pago"}
+                </Button>
+              </div>
 
               {isMpConnected && (
                 <p className="text-[11px] text-emerald-700 flex items-center gap-1 mt-1">

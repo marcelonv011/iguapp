@@ -197,7 +197,15 @@ export default function Delivery() {
 
           const docs = snap.docs.map((d) => d.data());
 
-          // elegir la suscripción con mayor end_date
+          // 🔴 IMPORTANTE: solo suscripciones de restaurante
+          const restaurantSubs = docs.filter(
+            (s) => s.plan_type && s.plan_type.startsWith("restaurant")
+          );
+
+          // Si no tiene NINGÚN plan de restaurante, no mostramos sus restaurantes
+          if (!restaurantSubs.length) return;
+
+          // elegir la suscripción de restaurante con mayor end_date
           const pickBest = (arr) =>
             arr.reduce((best, cur) => {
               if (!cur.end_date) return best;
@@ -218,7 +226,7 @@ export default function Delivery() {
               return ms > bestMs ? cur : best;
             }, null);
 
-          const sub = pickBest(docs);
+          const sub = pickBest(restaurantSubs);
           if (!sub) return;
 
           states[email] = {
