@@ -35,6 +35,7 @@ import {
   Flame,
   X,
   Check,
+  Star,
 } from "lucide-react";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -542,6 +543,7 @@ export default function AdminPanel() {
     business_type: "servicios", // productos | servicios | comida
     rating: "5", // string en el form, número al guardar
     open_hours: "", // 👈 NUEVO
+    featured: false,
   });
 
   const [mapOpen, setMapOpen] = useState(false);
@@ -741,6 +743,10 @@ export default function AdminPanel() {
     return raw < 0 ? 0 : raw;
   }, [subscription, thisMonthCount]);
 
+  const isProPlan =
+    subscription?.product_type === "publications" &&
+    subscription?.plan_tier === "pro"; // viene del backend
+
   const reachedLimit = planUsed >= planLimit;
 
   const resetForm = () => {
@@ -785,6 +791,7 @@ export default function AdminPanel() {
       business_type: "servicios",
       rating: "5",
       open_hours: "", // 👈 NUEVO
+      featured: false,
     });
     setImageFiles([]);
     setEditing(null);
@@ -826,6 +833,22 @@ export default function AdminPanel() {
       toast.error("URL inválida");
     }
   };
+
+  async function ensureSingleFeatured(db, email, keepId) {
+    const q = query(
+      collection(db, "publications"),
+      where("created_by", "==", email),
+      where("featured", "==", true)
+    );
+    const snap = await getDocs(q);
+    const ops = [];
+    snap.forEach((d) => {
+      if (d.id !== keepId) {
+        ops.push(updateDoc(d.ref, { featured: false }));
+      }
+    });
+    await Promise.all(ops);
+  }
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
@@ -870,30 +893,34 @@ export default function AdminPanel() {
           initialStatus = "active";
         }
       }
+const cleanedImages = Array.isArray(imageFiles)
+  ? imageFiles.filter((url) => !!url && typeof url === "string")
+  : [];
 
-      const payload = {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        category: form.category,
-        price:
-          hasPriceCategory(form.category) && form.price !== ""
-            ? Number(form.price)
-            : null,
-        location: form.location || null,
-        location_full: form.location_full || null,
-        contact_phone: form.contact_phone || null,
-        contact_email: form.contact_email || user.email,
-        status: initialStatus, // 👈 usamos el status calculado
-        images: imageFiles,
-        created_by: user.email,
-        geo_lat: form.geo_lat ?? null,
-        geo_lon: form.geo_lon ?? null,
-        ...(editing ? {} : { created_date: serverTimestamp() }),
-        updated_date: serverTimestamp(),
+const payload = {
+  title: form.title.trim(),
+  description: form.description.trim(),
+  category: form.category,
+  price:
+    hasPriceCategory(form.category) && form.price !== ""
+      ? Number(form.price)
+      : null,
+  location: form.location || null,
+  location_full: form.location_full || null,
+  contact_phone: form.contact_phone || null,
+  contact_email: form.contact_email || user.email,
+  status: initialStatus,
+  images: cleanedImages,         // <-- SOLO ESTA
+  created_by: user.email,
+  geo_lat: form.geo_lat ?? null,
+  geo_lon: form.geo_lon ?? null,
+  ...(editing ? {} : { created_date: serverTimestamp() }),
+  updated_date: serverTimestamp(),
+  subscription_status_snapshot: subscription?.status || null,
+  subscription_end_date: subscription?.end_date || null,
+  featured: isProPlan ? !!form.featured : false,
+};
 
-        subscription_status_snapshot: subscription?.status || null,
-        subscription_end_date: subscription?.end_date || null,
-      };
 
       // Campos por categoría
       if (form.category === "empleo") {
@@ -945,16 +972,28 @@ export default function AdminPanel() {
       // 5) Guardar
       if (editing) {
         await updateDoc(doc(db, "publications", editing.id), payload);
+
+        // 👇 si quedó marcada como destacada y tiene plan pro,
+        // apagamos cualquier otra destacada del mismo usuario
+        if (payload.featured && isProPlan) {
+          await ensureSingleFeatured(db, user.email, editing.id);
+        }
+
         toast.success("Publicación actualizada");
       } else {
-        await addDoc(collection(db, "publications"), payload);
+        const docRef = await addDoc(collection(db, "publications"), payload);
 
-        // incrementamos el contador del plan si el doc de suscripción existe
         if (subscription?.id) {
           await updateDoc(doc(db, "subscriptions", subscription.id), {
             publications_used: increment(1),
           });
         }
+
+        // 👇 misma lógica para nueva
+        if (payload.featured && isProPlan) {
+          await ensureSingleFeatured(db, user.email, docRef.id);
+        }
+
         toast.success(
           initialStatus === "active"
             ? "Publicación creada y activada"
@@ -1018,6 +1057,7 @@ export default function AdminPanel() {
           ? String(p.rating)
           : "5",
       open_hours: p.open_hours || "",
+      featured: !!p.featured,
     });
     setImageFiles(
       Array.isArray(p.images)
@@ -1760,6 +1800,30 @@ export default function AdminPanel() {
                         </div>
                       )}
 
+                      {isProPlan && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            id="featured"
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={form.featured}
+                            onChange={(e) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                featured: e.target.checked,
+                              }))
+                            }
+                          />
+                          <Label htmlFor="featured" className="text-sm">
+                            Marcar esta publicación como{" "}
+                            <span className="font-semibold text-purple-700">
+                              destacada
+                            </span>{" "}
+                            (máx. 1 por cuenta).
+                          </Label>
+                        </div>
+                      )}
+
                       {/* Imágenes */}
                       <div>
                         <Label>
@@ -1890,21 +1954,31 @@ export default function AdminPanel() {
               )}
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-3">
-                  <Badge
-                    className={
-                      p.status === "active"
-                        ? "bg-green-600"
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      className={
+                        p.status === "active"
+                          ? "bg-green-600"
+                          : p.status === "pending"
+                          ? "bg-amber-500"
+                          : "bg-slate-500"
+                      }
+                    >
+                      {p.status === "active"
+                        ? "Activa"
                         : p.status === "pending"
-                        ? "bg-amber-500"
-                        : "bg-slate-500"
-                    }
-                  >
-                    {p.status === "active"
-                      ? "Activa"
-                      : p.status === "pending"
-                      ? "Pendiente"
-                      : "Inactiva"}
-                  </Badge>
+                        ? "Pendiente"
+                        : "Inactiva"}
+                    </Badge>
+
+                    {p.featured && (
+                      <Badge className="bg-purple-600 flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-current" />
+                        Destacada
+                      </Badge>
+                    )}
+                  </div>
+
                   <Badge
                     variant="outline"
                     className="border-purple-200 text-purple-700 bg-purple-50"
