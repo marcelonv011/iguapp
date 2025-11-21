@@ -73,7 +73,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                 element={<EmprendimientoDetails />}
               />
               <Route path="/delivery" element={<Delivery />} />
-              <Route path="/delivery/:restaurantId" element={<RestaurantMenu />} />
+              <Route
+                path="/delivery/:restaurantId"
+                element={<RestaurantMenu />}
+              />
               <Route
                 path="/mi-restaurante"
                 element={
@@ -87,7 +90,20 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="/registro" element={<Registro />} />
               <Route path="/configuracion" element={<SettingsProfile />} />
               <Route path="/empleos/:slugOrId" element={<JobDetails />} />
-              <Route path="/planes-publicar" element={<Planes />} />
+              <Route
+                path="/planes-publicar"
+                element={
+                  <div className="min-h-screen grid place-items-center text-center p-6">
+                    <h1 className="text-2xl font-bold text-slate-800">
+                      🚫 Página temporalmente deshabilitada
+                    </h1>
+                    <p className="text-slate-600 mt-2 max-w-md">
+                      Los planes aún no están disponibles. Todo es gratis por
+                      ahora 🙂
+                    </p>
+                  </div>
+                }
+              />
               <Route
                 path="/sugerencias-reclamos"
                 element={<SugerenciasReclamos />}
