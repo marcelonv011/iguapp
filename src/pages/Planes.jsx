@@ -69,6 +69,13 @@ export default function Planes() {
             para que puedas publicar empleos, alquileres, ventas y servicios.
           </p>
 
+          {/* 👇 NUEVA ACLARACIÓN COMISIONES MP */}
+          <p className="mt-2 text-[11px] text-slate-500 max-w-xl mx-auto">
+            Los precios mostrados no incluyen la comisión de Mercado Pago. Al
+            momento de pagar, se agrega la comisión correspondiente sobre el
+            monto final.
+          </p>
+
           {!user && (
             <p className="mt-3 text-xs sm:text-sm text-amber-700 bg-amber-50 border border-amber-200 inline-flex px-3 py-1 rounded-full">
               Necesitás iniciar sesión para contratar un plan.
@@ -317,7 +324,9 @@ export default function Planes() {
           <p>
             Los pagos se procesan de forma segura a través de Mercado Pago. Una
             vez acreditado el pago, tu plan se activa automáticamente y vas a
-            poder gestionar tus publicaciones desde tu cuenta.
+            poder gestionar tus publicaciones desde tu cuenta. Tené en cuenta
+            que Mercado Pago puede aplicar comisiones adicionales sobre el monto
+            final al momento de pagar.
           </p>
         </div>
       </div>

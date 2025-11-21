@@ -116,10 +116,10 @@ app.post("/create-preference", async (req, res) => {
     const { plan_type, user_email, user_id } = req.body;
 
     const PRICES = {
-      publications_basic: 10,
-      publications_intermediate: 1,
-      publications_pro: 2,
-      restaurant_mensual: 2,
+      publications_basic: 16300,
+      publications_intermediate: 27100,
+      publications_pro: 54200,
+      restaurant_mensual: 27100,
     };
 
     const amount = PRICES[plan_type];
