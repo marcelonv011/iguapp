@@ -56,10 +56,13 @@ export default function Delivery() {
   const [reportComment, setReportComment] = useState("");
   const [reportLoading, setReportLoading] = useState(false);
 
+  const [subChecked, setSubChecked] = useState(false);
+
   // ==== Auth: saber si hay usuario logueado ====
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
+      setSubChecked(true); // ✅ ya sabemos si hay user o no
     });
 
     return () => unsub();
@@ -67,8 +70,19 @@ export default function Delivery() {
 
   // ==== Cargar restaurantes desde Firestore ====
   useEffect(() => {
+    // Si todavía no sabemos el estado del usuario, no hacemos nada
+    if (!subChecked) return;
+
+    // Si NO hay usuario logueado → dejamos vacío y cortamos
+    if (!user) {
+      setRestaurants([]);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchRestaurants = async () => {
       try {
+        setIsLoading(true);
         const ref = collection(db, "restaurants");
         const q = query(
           ref,
@@ -94,7 +108,7 @@ export default function Delivery() {
     };
 
     fetchRestaurants();
-  }, []);
+  }, [user, subChecked]);
 
   // ==== Cargar ratings desde restaurant_reviews y agrupar por restaurant_id ====
   useEffect(() => {
@@ -320,6 +334,43 @@ export default function Delivery() {
     });
     return Array.from(set).sort();
   }, [restaurants]);
+
+  // ===== Si no hay usuario logueado, mostrar mensaje =====
+  if (subChecked && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-slate-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-lg border border-slate-200 bg-white/95">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-red-100 flex items-center justify-center">
+              <UtensilsCrossed className="w-6 h-6 text-red-700" />
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Iniciá sesión para ver los restaurantes
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              Necesitás una cuenta en ConectCity para ver el listado de
+              restaurantes, hacer pedidos y reportar problemas.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link to="/login">
+                <button className="w-full sm:w-auto inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+                  Ir a iniciar sesión
+                </button>
+              </Link>
+              <Link to="/registro">
+                <button className="w-full sm:w-auto inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  Crear cuenta
+                </button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-slate-100 py-8">

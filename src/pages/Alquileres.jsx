@@ -184,6 +184,8 @@ export default function Alquileres() {
       if (!u) {
         setFavIds(new Set());
         setUserRatings({});
+        setHasActiveSub(false);
+        setSubChecked(true); // ✅ importante
         return;
       }
 
@@ -218,10 +220,10 @@ export default function Alquileres() {
           console.error("[alquileres] error cargando suscripción", e);
           setHasActiveSub(false);
         } finally {
-          setSubChecked(true);
+          setSubChecked(true); // ✅ cuando sí hay user
         }
 
-        // cargar ratings previos del usuario para alquileres
+        // cargar ratings previos...
         const ratingsSnap = await getDocs(
           collection(db, "users", u.uid, "rental_ratings")
         );
@@ -412,71 +414,94 @@ export default function Alquileres() {
 
   // ===== Query Firestore =====
   const {
-    data: publications = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ["alquileres"],
-    queryFn: async () => {
-      const col = collection(db, "publications");
+  data: publications = [],
+  isLoading,
+  error,
+} = useQuery({
+  queryKey: ["alquileres", user?.uid || "guest"],
+  enabled: !!user, // ✅ solo carga si hay usuario logueado
+  queryFn: async () => {
+    const col = collection(db, "publications");
 
-      try {
-        const q1 = fsQuery(
-          col,
-          where("category", "==", "alquiler"),
-          where("status", "==", "active"),
-          orderBy("created_date", "desc")
-        );
-        const s1 = await getDocs(q1);
-        const rows1 = s1.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows1.length > 0) {
-          return await filterByActiveSubscription(rows1);
-        }
-      } catch (e) {
-        console.warn(
-          "[q1] Necesita índice o falló created_date/orderBy:",
-          e?.code,
-          e?.message
-        );
-      }
+    const normalize = (docSnap) => {
+      const r = docSnap.data();
 
-      try {
-        const q2 = fsQuery(
-          col,
-          where("category", "==", "alquiler"),
-          where("status", "==", "active")
-        );
-        const s2 = await getDocs(q2);
-        const rows2 = s2.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (rows2.length > 0) {
-          return await filterByActiveSubscription(rows2);
-        }
-      } catch (e) {
-        console.warn("[q2] Falla en where/lectura:", e?.code, e?.message);
-      }
+      return {
+        id: docSnap.id,
+        ...r,
+        created_date: r?.created_date?.toDate
+          ? r.created_date.toDate()
+          : r?.created_date
+          ? new Date(r.created_date)
+          : new Date(0),
+        title: r?.title || "(Sin título)",
+        description: r?.description || "",
+        location: r?.location || "",
+        price: r?.price ?? null,
+        images: Array.isArray(r?.images) ? r.images : [],
+        category: (r?.category || r?.tipo || "").toString().toLowerCase(),
+        status: (r?.status || r?.estado || "").toString().toLowerCase(),
+      };
+    };
 
-      try {
-        const q3 = fsQuery(col, orderBy("created_date", "desc"));
-        const s3 = await getDocs(q3);
-        const sample = s3.docs
-          .slice(0, 10)
-          .map((d) => ({ id: d.id, ...d.data() }));
-        console.info("[Diagnóstico] Muestra de 'publications':", sample);
+    const isAlquilerCat = (cat) =>
+      ["alquiler", "alquileres", "rent", "rental"].includes(
+        String(cat || "").toLowerCase()
+      );
 
-        if (sample.length === 0) {
-          const s4 = await getDocs(col);
-          const sample2 = s4.docs
-            .slice(0, 10)
-            .map((d) => ({ id: d.id, ...d.data() }));
-          console.info("[Diagnóstico] Muestra sin orderBy:", sample2);
-        }
-        return [];
-      } catch (e) {
-        console.warn("[q3] Falla diagnóstico:", e?.code, e?.message);
-        return [];
-      }
-    },
-  });
+    const isActivoStatus = (st) =>
+      ["active", "activo", "activa"].includes(
+        String(st || "").toLowerCase()
+      );
+
+    const tryQuery = async (q) => {
+      const snap = await getDocs(q);
+      return snap.docs.map(normalize);
+    };
+
+    // 1) Ideal: category="alquiler" + status="active" + orderBy(created_date)
+    try {
+      const q1 = fsQuery(
+        col,
+        where("category", "==", "alquiler"),
+        where("status", "==", "active"),
+        orderBy("created_date", "desc")
+      );
+      const r1 = await tryQuery(q1);
+      const final1 = await filterByActiveSubscription(r1);
+      return final1;
+    } catch (e) {
+      console.warn("[alquileres] q1 falló:", e?.code || e);
+    }
+
+    // 2) Solo category="alquiler" filtrando status en cliente
+    try {
+      const q2 = fsQuery(col, where("category", "==", "alquiler"));
+      const r2 = await tryQuery(q2);
+      const activos = r2.filter((x) => isActivoStatus(x.status));
+      const final2 = activos.sort((a, b) => b.created_date - a.created_date);
+      const withSub = await filterByActiveSubscription(final2);
+      return withSub;
+    } catch (e) {
+      console.warn("[alquileres] q2 falló:", e?.code || e);
+    }
+
+    // 3) Fallback: traer TODO y filtrar en cliente
+    try {
+      const snap = await getDocs(col);
+      const all = snap.docs.map(normalize);
+      const alquilerLike = all.filter((x) => isAlquilerCat(x.category));
+      const activos = alquilerLike.filter((x) => isActivoStatus(x.status));
+      const final3 = activos.sort((a, b) => b.created_date - a.created_date);
+      const withSub = await filterByActiveSubscription(final3);
+      return withSub;
+    } catch (e) {
+      console.error("[alquileres] fallo general:", e?.code || e);
+      return []; // 👈 súper importante: nunca undefined
+    }
+  },
+});
+
 
   const formatter = useMemo(
     () =>
@@ -600,6 +625,46 @@ export default function Alquileres() {
     setShowFavOnly(false);
     setPage(1);
   };
+
+  // ===== Si no hay usuario logueado, mostrar mensaje =====
+  if (subChecked && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-slate-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-lg border border-slate-200 bg-white/95">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-purple-100 flex items-center justify-center">
+              <Building2 className="w-6 h-6 text-purple-700" />
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Iniciá sesión para ver los alquileres
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              Necesitás tener una cuenta en ConectCity para ver propiedades,
+              guardar favoritos y reportar publicaciones.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link to="/login">
+                <Button className="w-full sm:w-auto">
+                  Ir a iniciar sesión
+                </Button>
+              </Link>
+              <Link to="/registro">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto border-slate-300"
+                >
+                  Crear cuenta
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-purple-50 via-white to-slate-100">

@@ -257,14 +257,16 @@ export default function Ventas() {
   const [subChecked, setSubChecked] = useState(false);
 
   const {
-    data: publications = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ["ventas"],
-    queryFn: fetchVentas,
-  });
+  data: publications = [],
+  isLoading,
+  isError,
+  refetch,
+} = useQuery({
+  queryKey: ["ventas", user?.uid || "guest"],
+  queryFn: fetchVentas,
+  enabled: !!user, // ✅ solo carga ventas si hay usuario logueado
+});
+
 
   // Escuchar auth y cargar favoritos desde /users/{uid}/favorites
   useEffect(() => {
@@ -469,6 +471,47 @@ export default function Ventas() {
     setCategoryFilter("all");
     setShowFavOnly(false);
   };
+
+    // ===== Si no hay usuario logueado, mostrar mensaje =====
+  if (subChecked && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-slate-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-lg border border-slate-200 bg-white/95">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-green-100 flex items-center justify-center">
+              <ShoppingBag className="w-6 h-6 text-green-700" />
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Iniciá sesión para ver las ventas
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              Necesitás tener una cuenta en ConectCity para ver productos,
+              guardar favoritos y reportar publicaciones.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link to="/login">
+                <Button className="w-full sm:w-auto">
+                  Ir a iniciar sesión
+                </Button>
+              </Link>
+              <Link to="/registro">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto border-slate-300"
+                >
+                  Crear cuenta
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-slate-100 py-8">

@@ -391,7 +391,7 @@ export default function Emprendimientos() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["emprendimientos"],
+    queryKey: ["emprendimientos", user?.uid || "guest"],
     queryFn: async () => {
       const col = collection(db, "publications");
 
@@ -443,6 +443,7 @@ export default function Emprendimientos() {
       // si nada funcionó → lista vacía
       return [];
     },
+    enabled: !!user, // ✅ solo carga si hay usuario logueado
   });
 
   // Opciones de ubicación (ciudades)
@@ -568,6 +569,45 @@ export default function Emprendimientos() {
     setContactFilter("all");
     setPage(1);
   };
+  // ===== Si no hay usuario logueado, mostrar mensaje =====
+  if (subChecked && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-white to-slate-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-lg border border-slate-200 bg-white/95">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-orange-100 flex items-center justify-center">
+              <Store className="w-6 h-6 text-orange-700" />
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Iniciá sesión para ver los emprendimientos
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              Necesitás tener una cuenta en ConectCity para ver negocios,
+              guardar favoritos y dejar valoraciones.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link to="/login">
+                <Button className="w-full sm:w-auto">
+                  Ir a iniciar sesión
+                </Button>
+              </Link>
+              <Link to="/registro">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto border-slate-300"
+                >
+                  Crear cuenta
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-orange-50 via-white to-slate-100">

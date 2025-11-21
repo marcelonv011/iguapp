@@ -438,15 +438,17 @@ export default function Empleos() {
   ]);
 
   // ===== Query =====
-  const {
-    data: publications = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ["empleos"],
-    queryFn: fetchEmpleos,
-  });
+const {
+  data: publications = [],
+  isLoading,
+  isError,
+  refetch,
+} = useQuery({
+  queryKey: ["empleos", user?.uid || "guest"],
+  queryFn: fetchEmpleos,
+  enabled: !!user, // solo corre cuando hay usuario logueado
+});
+
 
   // ===== Opciones de ubicación (SOLO CIUDADES) =====
   const locations = useMemo(
@@ -549,6 +551,45 @@ export default function Empleos() {
     setSortBy("newest");
     setPage(1);
   };
+
+    // ===== Si no hay usuario logueado, mostrar mensaje =====
+  if (subChecked && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full shadow-lg border border-slate-200">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-full bg-blue-100 flex items-center justify-center">
+              <Briefcase className="w-6 h-6 text-blue-600" />
+            </div>
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Iniciá sesión para ver los empleos
+            </h2>
+
+            <p className="text-sm text-slate-600">
+              Necesitás tener una cuenta en ConectCity para ver las ofertas
+              laborales.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link to="/login">
+                <Button className="w-full sm:w-auto">Ir a iniciar sesión</Button>
+              </Link>
+              <Link to="/registro">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto border-slate-300"
+                >
+                  Crear cuenta
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   // ===== UI =====
   return (
