@@ -7,13 +7,14 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from "firebase/auth";
-import { auth } from "@/firebase";
+import { auth, db } from "@/firebase";
 import { ensureUserDoc } from "@/lib/ensureUserDoc";
-
+import { doc, getDoc } from "firebase/firestore";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
+import { toast } from "sonner";
 
 import { Mail, Lock, ArrowRight } from "lucide-react";
 
@@ -38,19 +39,51 @@ export default function Login() {
       await ensureUserDoc(cred.user);
       navigate(from, { replace: true });
     } catch (e) {
-      alert(e?.message || "No se pudo iniciar sesión");
+      if (e?.code === "auth/user-not-found") {
+        toast.error(
+          "No encontramos una cuenta con ese email. Si todavía no te registraste, creá tu cuenta primero."
+        );
+      } else if (
+        e?.code === "auth/wrong-password" ||
+        e?.code === "auth/invalid-credential"
+      ) {
+        toast.error("Email o contraseña incorrectos.");
+      } else {
+        console.error(e);
+        toast.error("No se pudo iniciar sesión. Intentá de nuevo.");
+      }
     }
   };
 
   const loginWithGoogle = async () => {
-    try {
-      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-      await ensureUserDoc(cred.user);
-      navigate(from, { replace: true });
-    } catch (e) {
-      alert(e?.message || "Error con Google");
+  try {
+    const provider = new GoogleAuthProvider();
+    const cred = await signInWithPopup(auth, provider);
+    const user = cred.user;
+
+    // Verificamos si tiene doc en "users"
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      // No está registrado correctamente (no aceptó términos)
+      await auth.signOut();
+      toast.error(
+        "Para usar Google por primera vez, primero completá el registro y aceptá los Términos."
+      );
+      navigate("/registro", { state: { from } });
+      return;
     }
-  };
+
+    // Ya tiene cuenta -> puede entrar
+    await ensureUserDoc(user);
+    navigate(from, { replace: true });
+  } catch (e) {
+    console.error(e);
+    toast.error("No se pudo iniciar sesión con Google. Intentá de nuevo.");
+  }
+};
+
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -102,9 +135,7 @@ export default function Login() {
                   />
                 </div>
                 {errors.email && (
-                  <p className="text-xs text-red-600">
-                    {errors.email.message}
-                  </p>
+                  <p className="text-xs text-red-600">{errors.email.message}</p>
                 )}
               </div>
 
