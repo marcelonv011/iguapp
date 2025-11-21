@@ -527,6 +527,49 @@ export default function SuperAdminPanel() {
     }
   };
 
+  // 👉 Dar 1 mes gratis de suscripción de restaurante (plan básico)
+  const giveFreeRestaurantMonthToUser = async (userEmail) => {
+    if (!userEmail) {
+      toast.error("Este usuario no tiene email válido");
+      return;
+    }
+
+    if (
+      !confirm(
+        `¿Dar 1 mes gratis del plan de restaurante (delivery) a ${userEmail}?`
+      )
+    )
+      return;
+
+    try {
+      const start = new Date();
+      const end = new Date();
+      end.setMonth(end.getMonth() + 1); // +1 mes
+
+      await addDoc(collection(db, "subscriptions"), {
+        user_email: userEmail,
+        product_type: "restaurant", // 🔹 importante para diferenciar
+        plan_tier: "restaurant_basic",
+        plan_type: "restaurant_mensual", // 🔹 empieza con "restaurant"
+        start_date: start,
+        end_date: end,
+        status: "active",
+        amount: 0,
+        payment_id: "free_restaurant_trial",
+        billing_status: "trial",
+        created_at: serverTimestamp(),
+      });
+
+      toast.success(
+        "Se activó 1 mes gratis del plan de restaurante para este usuario"
+      );
+      loadAll();
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo crear la suscripción gratis de restaurante");
+    }
+  };
+
   // --- Acciones reportes ---
   const setReportStatus = async (id, status) => {
     try {
@@ -1209,17 +1252,31 @@ export default function SuperAdminPanel() {
                                       </Button>
                                     )}
 
-                                    {/* 👉 Nuevo botón: 1 mes gratis */}
+                                    {/* 👉 Botones: 1 mes gratis publicaciones + 1 mes restaurante */}
                                     {u.email && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                          giveFreeMonthToUser(u.email)
-                                        }
-                                      >
-                                        1 mes gratis
-                                      </Button>
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            giveFreeMonthToUser(u.email)
+                                          }
+                                        >
+                                          1 mes gratis
+                                        </Button>
+
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            giveFreeRestaurantMonthToUser(
+                                              u.email
+                                            )
+                                          }
+                                        >
+                                          1 mes restaurante
+                                        </Button>
+                                      </>
                                     )}
                                   </div>
                                 </TableCell>

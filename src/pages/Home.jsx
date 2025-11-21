@@ -386,15 +386,7 @@ export default function Home() {
   }, [searchParams, setSearchParams]);
 
   useEffect(() => {
-    try {
-      const alreadySeen = localStorage.getItem("cc_testing_notice_seen");
-      if (!alreadySeen) {
-        setShowTestingModal(true);
-      }
-    } catch {
-      // si falla localStorage igual mostramos el modal
-      setShowTestingModal(true);
-    }
+    setShowTestingModal(true);
   }, []);
 
   // Publicaciones destacadas (con filtro de suscripción)
@@ -455,14 +447,7 @@ export default function Home() {
       {/* Modal Modo Testing */}
       <Dialog
         open={showTestingModal}
-        onOpenChange={(open) => {
-          setShowTestingModal(open);
-          if (!open) {
-            try {
-              localStorage.setItem("cc_testing_notice_seen", "1");
-            } catch {}
-          }
-        }}
+        onOpenChange={(open) => setShowTestingModal(open)}
       >
         <DialogContent className="max-w-lg border border-red-500 bg-red-50">
           <DialogHeader>
@@ -484,11 +469,21 @@ export default function Home() {
                 Si encontrás algún error o algo raro, por favor escribinos a{" "}
                 <span className="font-semibold">conectcity1@gmail.com</span>.
               </li>
+
               <li>
                 Cuando te registrás e iniciás sesión, un{" "}
                 <strong>moderador</strong> revisa y aprueba tu cuenta antes de
-                que puedas empezar a publicar.
+                que puedas empezar a publicar{" "}
+                <strong>empleos, alquileres, ventas y emprendimientos</strong>.
               </li>
+
+              <li>
+                Si querés publicar tu <strong>restaurante o delivery</strong>,
+                también debe ser
+                <strong> aprobado manualmente por un moderador</strong> antes de
+                aparecer en la app.
+              </li>
+
               <li>
                 En el futuro, algunas funciones pasarán a ser{" "}
                 <strong>pagas</strong>, pero por ahora estamos en modo testing
