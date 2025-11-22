@@ -111,26 +111,38 @@ export default function Registro() {
         <Card className="w-full max-w-md border-0 shadow-xl backdrop-blur bg-white/80 rounded-2xl">
           <CardContent className="p-6 sm:p-8">
             {/* Marca */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl grid place-items-center bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-md">
-                <span className="font-bold">CD</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900">
-                  Ciudad Digital
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Tu ciudad en un solo lugar
-                </p>
-              </div>
-            </div>
+            {/* Header con logo dentro del Card */}
+<div className="flex flex-col items-center text-center mb-6">
+  <img
+    src="/conectcity-logo.png"
+    alt="ConectCity"
+    className="
+      w-40 h-40
+      sm:w-40 sm:h-40
+      object-contain
+      drop-shadow-[0_8px_20px_rgba(59,130,246,0.45)]
+      animate-[pulse_3s_ease-in-out_infinite]
+    "
+  />
 
-            <div className="mb-5">
-              <h1 className="text-2xl font-bold">Crear cuenta</h1>
-              <p className="text-sm text-muted-foreground">
-                Registrate para publicar empleos, alquileres y más.
-              </p>
-            </div>
+  <h1 className="mt-3 text-2xl font-extrabold text-slate-900 tracking-tight">
+    ConectCity
+  </h1>
+
+  <p className="text-slate-600 font-medium -mt-1">
+    Tu ciudad en un solo lugar
+  </p>
+</div>
+
+
+            <div className="mb-5 text-left">
+  <h1 className="text-2xl font-bold text-slate-900">
+    Crear cuenta
+  </h1>
+  <p className="text-sm text-muted-foreground mt-0.5">
+    Registrate para publicar empleos, alquileres y más.
+  </p>
+</div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {/* Nombre completo */}

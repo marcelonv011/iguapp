@@ -522,6 +522,21 @@ export default function Home() {
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto">
+            {/* Logo ConectCity grande */}
+            <div className="flex justify-center mb-8">
+              <img
+                src="/conectcity-logo.png"
+                alt="ConectCity"
+                className="
+      w-32 h-32
+      sm:w-36 sm:h-36
+      md:w-40 md:h-40
+      object-contain
+      drop-shadow-[0_12px_30px_rgba(255,255,255,0.55)]
+      animate-[pulse_3s_ease-in-out_infinite]
+    "
+              />
+            </div>
             <Badge className="mb-4 bg-white/20 text-white border-white/30">
               <TrendingUp className="w-3 h-3 mr-1" />
               Tu ciudad conectada

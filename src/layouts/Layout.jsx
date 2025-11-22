@@ -219,9 +219,24 @@ export default function Layout({ children }) {
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20 group-hover:scale-105 transition-transform">
-                <Store className="w-6 h-6 text-white" />
+              <div
+                className="
+  w-12 h-12 rounded-2xl overflow-hidden 
+  bg-white/40 backdrop-blur-xl 
+  shadow-[0_8px_25px_-6px_rgba(0,0,0,0.25)]
+  ring-1 ring-white/50
+  hover:shadow-[0_10px_30px_-4px_rgba(0,0,0,0.35)]
+  hover:scale-[1.04]
+  transition-all duration-300
+"
+              >
+                <img
+                  src="/conectcity-logo.png"
+                  alt="ConectCity Logo"
+                  className="w-full h-full object-cover object-center"
+                />
               </div>
+
               <div className="hidden sm:block">
                 <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
                   <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600">

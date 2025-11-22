@@ -56,65 +56,70 @@ export default function Login() {
   };
 
   const loginWithGoogle = async () => {
-  try {
-    const provider = new GoogleAuthProvider();
-    const cred = await signInWithPopup(auth, provider);
-    const user = cred.user;
+    try {
+      const provider = new GoogleAuthProvider();
+      const cred = await signInWithPopup(auth, provider);
+      const user = cred.user;
 
-    // Verificamos si tiene doc en "users"
-    const userRef = doc(db, "users", user.uid);
-    const snap = await getDoc(userRef);
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
 
-    if (!snap.exists()) {
-      // No está registrado correctamente (no aceptó términos)
-      await auth.signOut();
-      toast.error(
-        "Para usar Google por primera vez, primero completá el registro y aceptá los Términos."
-      );
-      navigate("/registro", { state: { from } });
-      return;
+      if (!snap.exists()) {
+        await auth.signOut();
+        toast.error(
+          "Para usar Google por primera vez, primero completá el registro y aceptá los Términos."
+        );
+        navigate("/registro", { state: { from } });
+        return;
+      }
+
+      await ensureUserDoc(user);
+      navigate(from, { replace: true });
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo iniciar sesión con Google. Intentá de nuevo.");
     }
-
-    // Ya tiene cuenta -> puede entrar
-    await ensureUserDoc(user);
-    navigate(from, { replace: true });
-  } catch (e) {
-    console.error(e);
-    toast.error("No se pudo iniciar sesión con Google. Intentá de nuevo.");
-  }
-};
-
+  };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-screen relative overflow-hidden flex items-center justify-center">
       {/* Fondo */}
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(900px_400px_at_-10%_-10%,#dbeafe_0%,transparent_60%),radial-gradient(900px_400px_at_110%_10%,#e9d5ff_0%,transparent_60%)]" />
       <div className="absolute right-[-10%] bottom-[-30%] w-[520px] h-[520px] rounded-full bg-indigo-500/10 blur-3xl -z-10" />
 
-      {/* Contenido */}
-      <div className="grid min-h-screen place-items-center p-4">
-        <Card className="w-full max-w-md border-0 shadow-xl backdrop-blur bg-white/80 rounded-2xl">
+      {/* Contenedor central */}
+      <div className="w-full max-w-xl px-4">
+        <Card className="w-full max-w-sm mx-auto border-0 shadow-xl backdrop-blur bg-white/90 rounded-2xl">
           <CardContent className="p-6 sm:p-8">
-            {/* Marca */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl grid place-items-center bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-md">
-                {/* Logo simple */}
-                <span className="font-bold">CD</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-900">
-                  Ciudad Digital
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Tu ciudad en un solo lugar
-                </p>
-              </div>
+            {/* Header con logo dentro del Card (sin fondo alrededor) */}
+            <div className="flex flex-col items-center text-center mb-6">
+              <img
+                src="/conectcity-logo.png"
+                alt="ConectCity"
+                className="
+                  w-40 h-40
+                  sm:w-40 sm:h-40
+                  object-contain
+                  drop-shadow-[0_8px_20px_rgba(59,130,246,0.45)]
+                  animate-[pulse_3s_ease-in-out_infinite]
+                "
+              />
+
+              <h1 className="mt-3 text-2xl font-extrabold text-slate-900 tracking-tight">
+                ConectCity
+              </h1>
+
+              <p className="text-slate-600 font-medium -mt-1">
+                Tu ciudad en un solo lugar
+              </p>
             </div>
 
-            {/* Título */}
-            <div className="mb-5">
-              <h1 className="text-2xl font-bold">Ingresá a tu cuenta</h1>
-              <p className="text-sm text-muted-foreground">
+            {/* Título del formulario */}
+            <div className="mb-5 text-left">
+              <h2 className="text-xl font-bold text-slate-900">
+                Ingresá a tu cuenta
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Publicá empleos, alquileres y más.
               </p>
             </div>
@@ -165,14 +170,17 @@ export default function Login() {
                 )}
               </div>
 
-              <Button disabled={isSubmitting} className="w-full rounded-xl">
+              <Button
+                disabled={isSubmitting}
+                className="w-full rounded-xl mt-2 bg-slate-900 hover:bg-slate-800"
+              >
                 {isSubmitting ? "Ingresando..." : "Ingresar"}
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </form>
 
             {/* Separador */}
-            <div className="flex items-center gap-3 my-5">
+            <div className="flex items-center gap-3 my-6">
               <div className="h-px bg-slate-200 flex-1" />
               <span className="text-xs text-slate-500">o</span>
               <div className="h-px bg-slate-200 flex-1" />
@@ -181,7 +189,7 @@ export default function Login() {
             {/* Google */}
             <Button
               variant="outline"
-              className="w-full rounded-xl"
+              className="w-full rounded-xl border-slate-200 bg-white/60 hover:bg-slate-50"
               onClick={loginWithGoogle}
             >
               <svg
