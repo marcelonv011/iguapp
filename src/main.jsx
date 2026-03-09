@@ -103,9 +103,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                     <h1 className="text-2xl font-bold text-slate-800">
                       🚫 Página temporalmente deshabilitada
                     </h1>
-                    <p className="text-slate-600 mt-2 max-w-md">
-                      Los planes aún no están disponibles. Todo es gratis por
-                      ahora 🙂
+                    <p className="text-slate-600 mt-2 max-w-md text-center">
+                      🚀 Por ahora publicar es totalmente gratis. <br />
+                      Para subir tu anuncio ingresá a las secciones de
+                      <span className="font-semibold">
+                        {" "}
+                        Empleos, Alquileres, Ventas, Negocios o Delivery y publicá directamente desde allí.
+                      </span>
                     </p>
                   </div>
                 }
@@ -144,5 +148,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Toaster richColors position="top-right" />
       </AuthProvider>
     </QueryClientProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

@@ -69,7 +69,7 @@ async function filterPubsByActiveSubscription(list) {
       try {
         const qSub = fsQuery(
           collection(db, "subscriptions"),
-          where("user_email", "==", email)
+          where("user_email", "==", email),
         );
         const snap = await getDocs(qSub);
         if (snap.empty) return;
@@ -83,10 +83,10 @@ async function filterPubsByActiveSubscription(list) {
               x?.toDate
                 ? x.toDate().getTime()
                 : x?.seconds
-                ? x.seconds * 1000
-                : x
-                ? new Date(x).getTime()
-                : -Infinity;
+                  ? x.seconds * 1000
+                  : x
+                    ? new Date(x).getTime()
+                    : -Infinity;
             return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
           }, null);
 
@@ -98,7 +98,7 @@ async function filterPubsByActiveSubscription(list) {
       } catch (e) {
         console.error("[home] error leyendo suscripción de", email, e);
       }
-    })
+    }),
   );
 
   // Sólo dejamos publicaciones de usuarios con plan activo y no vencido
@@ -128,7 +128,7 @@ async function filterRestaurantsByActiveSubscription(list) {
       try {
         const qSub = fsQuery(
           collection(db, "subscriptions"),
-          where("user_email", "==", email)
+          where("user_email", "==", email),
         );
         const snap = await getDocs(qSub);
         if (snap.empty) return;
@@ -138,7 +138,7 @@ async function filterRestaurantsByActiveSubscription(list) {
 
         // 🔹 Nos quedamos SOLO con planes de restaurante
         const restaurantSubs = allSubs.filter(
-          (s) => s.plan_type && s.plan_type.startsWith("restaurant")
+          (s) => s.plan_type && s.plan_type.startsWith("restaurant"),
         );
 
         if (restaurantSubs.length === 0) return;
@@ -150,10 +150,10 @@ async function filterRestaurantsByActiveSubscription(list) {
               x?.toDate
                 ? x.toDate().getTime()
                 : x?.seconds
-                ? x.seconds * 1000
-                : x
-                ? new Date(x).getTime()
-                : -Infinity;
+                  ? x.seconds * 1000
+                  : x
+                    ? new Date(x).getTime()
+                    : -Infinity;
             return getMs(cur.end_date) > getMs(best?.end_date) ? cur : best;
           }, null);
 
@@ -165,7 +165,7 @@ async function filterRestaurantsByActiveSubscription(list) {
       } catch (e) {
         console.error("[home] error leyendo suscripción (rest) de", email, e);
       }
-    })
+    }),
   );
 
   // 🔹 Solo restaurantes con plan de restaurante ACTIVO y NO vencido
@@ -190,8 +190,8 @@ async function fetchHomeFeaturedPublications() {
       created_date: r?.created_date?.toDate
         ? r.created_date.toDate()
         : r?.created_date
-        ? new Date(r.created_date)
-        : new Date(0),
+          ? new Date(r.created_date)
+          : new Date(0),
     };
   };
 
@@ -207,7 +207,7 @@ async function fetchHomeFeaturedPublications() {
       where("featured", "==", true),
       where("status", "==", "active"),
       orderBy("created_date", "desc"),
-      limit(6)
+      limit(6),
     );
     const r1 = await tryQuery(q1);
     if (r1.length > 0) {
@@ -223,7 +223,7 @@ async function fetchHomeFeaturedPublications() {
     const q2 = fsQuery(
       col,
       where("featured", "==", true),
-      where("status", "==", "active")
+      where("status", "==", "active"),
     );
     const r2 = await tryQuery(q2);
     if (r2.length > 0) {
@@ -263,8 +263,8 @@ async function fetchHomeFeaturedRestaurants() {
       createdAt: r?.createdAt?.toDate
         ? r.createdAt.toDate()
         : r?.createdAt
-        ? new Date(r.createdAt)
-        : new Date(0),
+          ? new Date(r.createdAt)
+          : new Date(0),
     };
   };
 
@@ -322,7 +322,7 @@ async function fetchHomeFeaturedRestaurants() {
       where("status", "==", "approved"),
       where("is_open", "==", true),
       orderBy("createdAt", "desc"),
-      limit(20) // traemos algunos y después filtramos + top 3
+      limit(20), // traemos algunos y después filtramos + top 3
     );
     let r1 = await tryQuery(q1);
     if (r1.length > 0) {
@@ -471,23 +471,29 @@ export default function Home() {
               </li>
 
               <li>
-                Cuando te registrás e iniciás sesión, un{" "}
-                <strong>moderador</strong> revisa y aprueba tu cuenta antes de
-                que puedas empezar a publicar{" "}
-                <strong>empleos, alquileres, ventas y emprendimientos</strong>.
+                Cuando te registrás e iniciás sesión podés comenzar a publicar
+                inmediatamente{" "}
+                <strong>
+                  empleos, alquileres, ventas, negocios o delivery
+                </strong>
+                .
               </li>
 
               <li>
-                Si querés publicar tu <strong>restaurante o delivery</strong>,
-                también debe ser
-                <strong> aprobado manualmente por un moderador</strong> antes de
-                aparecer en la app.
+                Todas las publicaciones son visibles dentro de la plataforma y
+                los usuarios interesados podrán contactarte directamente usando
+                los datos que incluyas en tu anuncio.
               </li>
 
               <li>
-                En el futuro, algunas funciones pasarán a ser{" "}
-                <strong>pagas</strong>, pero por ahora estamos en modo testing
-                abierto.
+                Actualmente la plataforma está en <strong>modo testing</strong>,
+                por lo que publicar es <strong>totalmente gratis</strong>.
+              </li>
+
+              <li>
+                En el futuro algunas funciones podrán ser{" "}
+                <strong>premium o pagas</strong>, pero por ahora todas las
+                publicaciones son gratuitas.
               </li>
             </ul>
 
