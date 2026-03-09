@@ -8,6 +8,7 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 import { auth, db } from "@/firebase";
+import { autoProvisionUser } from "@/lib/autoProvisionUser";
 import { ensureUserDoc } from "@/lib/ensureUserDoc";
 import { doc, getDoc } from "firebase/firestore";
 import { Card, CardContent } from "@/ui/card";
@@ -34,52 +35,57 @@ export default function Login() {
   }, [navigate, from]);
 
   const onSubmit = async ({ email, password }) => {
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      await ensureUserDoc(cred.user);
-      navigate(from, { replace: true });
-    } catch (e) {
-      if (e?.code === "auth/user-not-found") {
-        toast.error(
-          "No encontramos una cuenta con ese email. Si todavía no te registraste, creá tu cuenta primero."
-        );
-      } else if (
-        e?.code === "auth/wrong-password" ||
-        e?.code === "auth/invalid-credential"
-      ) {
-        toast.error("Email o contraseña incorrectos.");
-      } else {
-        console.error(e);
-        toast.error("No se pudo iniciar sesión. Intentá de nuevo.");
-      }
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+
+    await ensureUserDoc(cred.user);
+    await autoProvisionUser(cred.user); //apagar para el admin para todos
+
+    navigate(from, { replace: true });
+  } catch (e) {
+    if (e?.code === "auth/user-not-found") {
+      toast.error(
+        "No encontramos una cuenta con ese email. Si todavía no te registraste, creá tu cuenta primero."
+      );
+    } else if (
+      e?.code === "auth/wrong-password" ||
+      e?.code === "auth/invalid-credential"
+    ) {
+      toast.error("Email o contraseña incorrectos.");
+    } else {
+      console.error(e);
+      toast.error("No se pudo iniciar sesión. Intentá de nuevo.");
     }
-  };
+  }
+};
 
   const loginWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
-      const user = cred.user;
+  try {
+    const provider = new GoogleAuthProvider();
+    const cred = await signInWithPopup(auth, provider);
+    const user = cred.user;
 
-      const userRef = doc(db, "users", user.uid);
-      const snap = await getDoc(userRef);
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
 
-      if (!snap.exists()) {
-        await auth.signOut();
-        toast.error(
-          "Para usar Google por primera vez, primero completá el registro y aceptá los Términos."
-        );
-        navigate("/registro", { state: { from } });
-        return;
-      }
-
-      await ensureUserDoc(user);
-      navigate(from, { replace: true });
-    } catch (e) {
-      console.error(e);
-      toast.error("No se pudo iniciar sesión con Google. Intentá de nuevo.");
+    if (!snap.exists()) {
+      await auth.signOut();
+      toast.error(
+        "Para usar Google por primera vez, primero completá el registro y aceptá los Términos."
+      );
+      navigate("/registro", { state: { from } });
+      return;
     }
-  };
+
+    await ensureUserDoc(user);
+    await autoProvisionUser(user); //apagar para el admin para todos
+
+    navigate(from, { replace: true });
+  } catch (e) {
+    console.error(e);
+    toast.error("No se pudo iniciar sesión con Google. Intentá de nuevo.");
+  }
+};
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center">

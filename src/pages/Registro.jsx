@@ -8,8 +8,8 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 import { auth } from "@/firebase";
+import { autoProvisionUser } from "@/lib/autoProvisionUser";
 import { ensureUserDoc } from "@/lib/ensureUserDoc";
-
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -48,45 +48,52 @@ export default function Registro() {
   }, [navigate, from]);
 
   const onSubmit = async (data) => {
-    const {
-      full_name,
-      phone_number,
-      email,
-      password,
-      acceptLegal,
-      adultOrConsent,
-    } = data;
+  const {
+    full_name,
+    phone_number,
+    email,
+    password,
+    acceptLegal,
+    adultOrConsent,
+  } = data;
 
-    if (!acceptLegal || !adultOrConsent) {
-      toast.error(
-        "Debés aceptar los términos y declarar mayoría de edad o consentimiento."
-      );
-      return;
-    }
-
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await ensureUserDoc(cred.user, { full_name, phone_number });
-      navigate(from, { replace: true });
-    } catch (e) {
-      alert(e?.message || "No se pudo crear la cuenta");
-    }
-  };
-
-  const registerWithGoogle = async () => {
-  // ⚠️ Misma validación que para el formulario normal
   if (!acceptLegal || !adultOrConsent) {
     toast.error(
-  "Debés aceptar los Términos y la confirmación de edad antes de continuar con Google."
-);
+      "Debés aceptar los términos y declarar mayoría de edad o consentimiento."
+    );
+    return;
+  }
+
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+    await ensureUserDoc(cred.user, { full_name, phone_number });
+    await autoProvisionUser(cred.user); //apagar para el admin para todos
+
+    navigate(from, { replace: true });
+  } catch (e) {
+    console.error(e);
+    alert(e?.message || "No se pudo crear la cuenta");
+  }
+};
+
+  const registerWithGoogle = async () => {
+  if (!acceptLegal || !adultOrConsent) {
+    toast.error(
+      "Debés aceptar los Términos y la confirmación de edad antes de continuar con Google."
+    );
     return;
   }
 
   try {
     const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+
     await ensureUserDoc(cred.user);
+    await autoProvisionUser(cred.user); //apagar para el admin para todos
+
     navigate(from, { replace: true });
   } catch (e) {
+    console.error(e);
     alert(e?.message || "Error con Google");
   }
 };

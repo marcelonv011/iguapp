@@ -138,6 +138,7 @@ export default function SuperAdminPanel() {
   const [pendingRestaurants, setPendingRestaurants] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
   const [reports, setReports] = useState([]);
+  const [autoProvisionEnabled, setAutoProvisionEnabled] = useState(false);
 
   // filtros
   const [pubQuery, setPubQuery] = useState("");
@@ -187,9 +188,10 @@ export default function SuperAdminPanel() {
 
       loadAll();
       await Promise.all([
-        loadConfigPublications(),
-        loadConfigRestaurants(), // 🔹 también cargamos restaurantes
-      ]);
+  loadConfigPublications(),
+  loadConfigRestaurants(),
+  loadAutoProvisionConfig(),
+]);
     });
     return () => unsub();
   }, []);
@@ -258,6 +260,23 @@ export default function SuperAdminPanel() {
     }
   };
 
+  const loadAutoProvisionConfig = async () => {
+  try {
+    const cfgRef = doc(db, "settings", "autoProvision");
+    const snap = await getDoc(cfgRef);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      setAutoProvisionEnabled(!!data.enabled);
+    } else {
+      setAutoProvisionEnabled(false);
+    }
+  } catch (e) {
+    console.error("Error cargando autoProvision:", e);
+    setAutoProvisionEnabled(false);
+  }
+};
+
   const toggleRequireApproval = async () => {
     try {
       const newValue = !requireApproval;
@@ -309,6 +328,36 @@ export default function SuperAdminPanel() {
       toast.error("No se pudo actualizar la configuración de restaurantes");
     }
   };
+
+  const toggleAutoProvision = async () => {
+  try {
+    const newValue = !autoProvisionEnabled;
+    setAutoProvisionEnabled(newValue);
+
+    const cfgRef = doc(db, "settings", "autoProvision");
+    await setDoc(
+      cfgRef,
+      {
+        enabled: newValue,
+        make_admin: newValue,
+        grant_publications_month: newValue,
+        grant_restaurant_month: newValue,
+        publications_limit: 3,
+        updated_at: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    toast.success(
+      newValue
+        ? "Alta automática activada: los nuevos usuarios podrán quedar admin y con 1 mes gratis."
+        : "Alta automática desactivada."
+    );
+  } catch (e) {
+    console.error(e);
+    toast.error("No se pudo actualizar la configuración automática");
+  }
+};
 
   const loadAll = async () => {
     setLoading(true);
@@ -784,6 +833,28 @@ export default function SuperAdminPanel() {
             accent="text-green-700"
           />
         </div>
+        <Card className="mb-4 rounded-2xl shadow-sm border border-slate-200 bg-slate-50/80">
+  <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-4">
+    <div>
+      <p className="text-sm font-semibold text-slate-800">
+        Alta automática de usuarios
+      </p>
+      <p className="text-xs text-slate-600">
+        {autoProvisionEnabled
+          ? "Cuando un usuario nuevo inicie sesión, podrá recibir automáticamente rol admin + 1 mes de publicaciones + 1 mes de restaurante."
+          : "Actualmente los usuarios nuevos NO reciben alta automática."}
+      </p>
+    </div>
+
+    <Button
+      variant={autoProvisionEnabled ? "default" : "outline"}
+      size="sm"
+      onClick={toggleAutoProvision}
+    >
+      {autoProvisionEnabled ? "Desactivar automático" : "Activar automático"}
+    </Button>
+  </CardContent>
+</Card>
 
         {/* Config aprobación de restaurantes */}
         <Card className="mb-4 rounded-2xl shadow-sm border border-slate-200 bg-slate-50/80">
